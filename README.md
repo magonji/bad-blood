@@ -29,11 +29,6 @@ cd bad-blood
 pip install -e .
 ```
 
-### From PyPI (when available)
-```bash
-pip install bad-blood
-```
-
 ### Requirements
 - Python 3.8 or higher
 - See `requirements.txt` for detailed dependencies
@@ -83,7 +78,7 @@ bad-blood
   - Embedded metadata in filenames
 
 ### Output
-- **Parquet** (recommended): Efficient columnar storage format
+- **Parquet file**
 
 ## Metadata Naming Schemes
 
@@ -195,4 +190,5 @@ For questions, bug reports, or feature requests, please:
 1. Check the [documentation](https://github.com/magonji/bad-blood/wiki)
 2. Search [existing issues](https://github.com/magonji/bad-blood/issues)
 3. Create a [new issue](https://github.com/magonji/bad-blood/issues/new) if needed
+
 
