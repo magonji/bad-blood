@@ -172,7 +172,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Mario González-Jiménez**  
 University of Glasgow  
-Email: mario.gonzalez-jimenez@glasgow.ac.uk
+Email: mario.gonzalezjimenez@glasgow.ac.uk
 
 ## Changelog
 
@@ -190,5 +190,6 @@ For questions, bug reports, or feature requests, please:
 1. Check the [documentation](https://github.com/magonji/bad-blood/wiki)
 2. Search [existing issues](https://github.com/magonji/bad-blood/issues)
 3. Create a [new issue](https://github.com/magonji/bad-blood/issues/new) if needed
+
 
 
