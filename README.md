@@ -38,7 +38,7 @@ pip install -e .
 After installation, launch Bad Blood from the command line:
 
 ```bash
-bad-blood
+python bad_blood.py
 ```
 
 ### Basic Workflow

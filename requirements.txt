@@ -18,5 +18,9 @@ colorama>=0.4.4
 # Progress bars
 tqdm>=4.62.0
 
+# Parquet file support
+pyarrow>=12.0.0
+
+
 
 

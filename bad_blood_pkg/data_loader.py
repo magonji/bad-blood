@@ -31,7 +31,6 @@ def find_spectra_files() -> Optional[str]:
     """
     target_directory = questionary.path(
         "Please select the root directory to analyse:",
-        default=os.getcwd(),
         qmark="📂"
     ).ask()
     
