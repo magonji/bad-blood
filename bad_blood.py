@@ -6,6 +6,7 @@ from bad_blood_pkg import welcome
 from bad_blood_pkg import data_loader
 from bad_blood_pkg import data_preparer
 from bad_blood_pkg import data_exporter
+from bad_blood_pkg import file_checker
 
 
 def main():
@@ -40,6 +41,9 @@ def main():
                 else:
                     print(f"\n{Fore.RED}Failed to load spectra. Please try again.{Style.RESET_ALL}")
 
+            elif command == "check":    
+                file_checker.handle_check_command(args)   
+
             elif command == "prepare":
                 if 'df' in locals() and df is not None and not df.empty:
                     prepared_df = data_preparer.handle_prepare_command(df)
@@ -57,14 +61,15 @@ def main():
 
             elif command == "help":
                 print(f"\n{Fore.LIGHTBLACK_EX}Available commands:{Style.RESET_ALL}")
-                print(f'  {Fore.GREEN}load "directory"{Style.RESET_ALL}    - Load and analyse .mzz spectral files from a directory')
+                print(f'  {Fore.LIGHTCYAN_EX}load "directory"{Style.RESET_ALL}      - Load and analyse .mzz spectral files from a directory')
                 print(f"                            Creates unified matrix with metadata and interpolated spectra")
-                print(f"  {Fore.LIGHTGREEN_EX}prepare{Style.RESET_ALL}               - Apply quality control filters to remove problematic spectra")
+                print(f"  {Fore.GREEN}prepare{Style.RESET_ALL}               - Apply quality control filters to remove problematic spectra")
                 print(f"                            Detects abnormal backgrounds, atmospheric interference, and low signals")
-                print(f"  {Fore.YELLOW}export{Style.RESET_ALL}                - Export processed data with optional wavenumber selection")
+                print(f"  {Fore.LIGHTGREEN_EX}export{Style.RESET_ALL}                - Export processed data with optional wavenumber selection")
                 print(f"                            Interactive selection of specific wavenumbers and file formats")
+                print(f"  {Fore.YELLOW}check{Style.RESET_ALL}                 - Analyse file naming schemes to identify wrong naming formats")
                 print(f"  {Fore.LIGHTRED_EX}help{Style.RESET_ALL}                  - Display this help message")
-                print(f"  {Fore.MAGENTA}exit{Style.RESET_ALL}                  - Exit the program")
+                print(f"  {Fore.LIGHTMAGENTA_EX}exit{Style.RESET_ALL}                  - Exit the program")
                 print(f"\n{Fore.CYAN}Command workflow:{Style.RESET_ALL} load → prepare → export")
 
             else:

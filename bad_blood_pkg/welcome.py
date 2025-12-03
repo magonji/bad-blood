@@ -51,6 +51,7 @@ def welcome_message():
       print(f"     {Fore.CYAN}Files are saved to the original data directory by default.{Style.RESET_ALL}\n")
 
       print(f"{Fore.YELLOW}Additional commands:{Style.RESET_ALL}")
+      print(f"  {Fore.CYAN}'check'{Style.RESET_ALL} - Analyse file naming schemes to identify wrong naming formats")
       print(f"  {Fore.CYAN}'help'{Style.RESET_ALL} - Display available commands and their descriptions")
       print(f"  {Fore.CYAN}'exit'{Style.RESET_ALL} - Exit the program safely")
 
