@@ -145,9 +145,11 @@ def load_and_process_spectra(root_directory: str,
     
     expected_metadata_length, _, _ = most_common_scheme
     
-    # Find matching files
+    # Collect matching files and misnamed
     matching_files = _find_matching_files(root_directory, expected_metadata_length)
-    
+    ignored_files = _find_ignored_files(root_directory, expected_metadata_length)
+
+
     if not matching_files:
         print(f"\n{Fore.RED}No files found matching the common naming scheme.{Style.RESET_ALL}")
         return None
@@ -170,7 +172,7 @@ def load_and_process_spectra(root_directory: str,
     # Convert to DataFrame with user-defined column names
     df = _create_dataframe(unified_matrix, common_wavenumbers, spectra_data)
     
-    return df
+    return df, ignored_files
 
 
 def _find_matching_files(root_directory: str, expected_length: int) -> List[str]:
@@ -196,6 +198,31 @@ def _find_matching_files(root_directory: str, expected_length: int) -> List[str]
                     matching_files.append(os.path.join(current_path, filename))
     
     return matching_files
+
+
+def _find_ignored_files(root_directory: str, expected_length: int) -> List[str]:
+    """
+    Finds all .mzz files that do not match the naming convention
+
+    Args:
+        root_directory: Directory to search
+        expected_length: Expected number of metadata parts
+
+    Returns:
+        List of file paths that dont match the naming scheme.
+    """
+    ignored_files = []
+
+    for current_path, _, files in os.walk(root_directory):
+        for filename in files:
+            if filename.lower().endswith('.mzz'):
+                parts = filename.split('-')
+                metadata = parts[:-1]  # Exclude extension + last indicator
+
+                if len(metadata) != expected_length:
+                    ignored_files.append(os.path.join(current_path, filename))
+
+    return ignored_files
 
 
 def _process_spectral_files(file_paths: List[str]) -> Tuple[List[Dict], CounterType]:
@@ -647,10 +674,23 @@ def handle_load_command(args: List[str]) -> Optional[pd.DataFrame]:
     # Validate directory and process spectra
     if target_directory and os.path.exists(target_directory):
         most_common_scheme = analyse_mzz_files(target_directory)
-        df = load_and_process_spectra(target_directory, most_common_scheme)
+        result = load_and_process_spectra(target_directory, most_common_scheme)
         
-        if df is not None:
+        if result is not None:
+            df, ignored_files = result
             print(f"\n{Fore.GREEN}Final DataFrame created successfully.{Style.RESET_ALL}")
+
+            if ignored_files: # if any files don't follow the naming convention
+
+                log_path = os.path.join(target_directory, "misnamed_files.txt") # we'll log them here
+                
+                with open(log_path, "w", encoding="utf-8") as f:
+                    f.write("Ignored .mzz files (incorrect naming scheme):\n\n")
+                    for path in ignored_files:
+                        f.write(path + "\n")
+
+                print(f"{Fore.YELLOW} Misnamed files ({len(ignored_files)}) were logged to:{Style.RESET_ALL} {log_path}")
+
             return df, target_directory
         else:
             print(f"\n{Fore.RED}Failed to create DataFrame.{Style.RESET_ALL}")
