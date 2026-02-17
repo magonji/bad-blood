@@ -305,10 +305,14 @@ def _extract_spectrum_from_file(file_path: str) -> Optional[Dict]:
                 
                 # Extract metadata from filename
                 metadata_parts = filename.split('-')
-                # Remove extension from last part
+                # Remove extension from last field
                 metadata_parts[-1] = metadata_parts[-1].replace('.mzz', '')
-                # Remove the sample identifier (last part after removing extension)
+                # now gotta separate it in 2 with sep = "."
+                last_two = metadata_parts[-1].split('.')
                 metadata_parts = metadata_parts[:-1]
+                metadata_parts.append(last_two[0])
+                metadata_parts.append(last_two[1])
+
                 
                 # Create metadata dictionary
                 file_metadata = {f'metadata_{i}': val for i, val in enumerate(metadata_parts)}
