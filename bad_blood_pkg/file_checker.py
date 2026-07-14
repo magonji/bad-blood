@@ -18,8 +18,23 @@ from colorama import Fore, Style
 from tabulate import tabulate
 from tqdm import tqdm
 
+from bad_blood_pkg.console_ui import section as _section, explain as _explain
+
 # File to store recently renamed files for quick re-verification
 RENAMED_FILES_LOG = os.path.join(os.path.expanduser("~"), ".bad_blood_renamed_files.json")
+
+# Console section headers / explanatory text live in console_ui (shared with
+# the prepare and export steps).  _section and _explain are imported at the top.
+_MINORITY_PREVIEW = 8   # max filenames shown per minority group (lists can be huge)
+
+
+def _describe_scheme(scheme: Tuple[int, int, bool]) -> str:
+    """Turn a (parts, dates, has_days) signature into plain words."""
+    length, num_dates, has_days = scheme
+    parts = [f"{length} name part" + ("" if length == 1 else "s")]
+    parts.append(f"{num_dates} date" + ("" if num_dates == 1 else "s"))
+    parts.append("a day tag" if has_days else "no day tag")
+    return ", ".join(parts)
 
 
 def save_renamed_files(renamed_files: List[Dict]) -> None:
@@ -258,28 +273,20 @@ def print_4digit_year_report(results: Dict) -> None:
         results: Dictionary from check_four_digit_year_dates()
     """
     files = results['files_with_4digit_years']
-    
+
     if not files:
-        print(f"{Fore.GREEN}✓ No files with 4-digit year format detected!{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}✓ No four-digit-year dates found.{Style.RESET_ALL}\n")
         return
-    
-    print(f"\n{Fore.YELLOW}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}Files with 4-digit Year Format (YYYY instead of YY){Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{'='*70}{Style.RESET_ALL}\n")
-    print(f"⚠ Found {Fore.RED}{len(files)}{Style.RESET_ALL} files using YYYY-MM-DD format:\n")
-    
+
+    print(f"\n{Fore.CYAN}Preview — YYYYMMDD → YYMMDD:{Style.RESET_ALL}\n")
     for i, (file_path, dates) in enumerate(sorted(files), 1):
         filename = os.path.basename(file_path)
-        date_strs = [f"{y}-{m}-{d}" for y, m, d in dates]
-        print(f"{Fore.CYAN}{i:3d}. {filename}{Style.RESET_ALL}")
-        print(f"      Detected: {', '.join(date_strs)}")
-        
-        # Show what the corrected name would be
         _, new_path = rename_4digit_to_2digit_year(file_path)
         new_filename = os.path.basename(new_path)
+        print(f"  {i:3d}. {filename}")
         if new_filename != filename:
-            print(f"      {Fore.GREEN}→ Corrected: {new_filename}{Style.RESET_ALL}")
-        print()
+            print(f"       {Fore.GREEN}→ {new_filename}{Style.RESET_ALL}")
+    print()
 
 
 def rename_files_4digit_to_2digit(files_list: List[Tuple[str, List]]) -> Tuple[int, int]:
@@ -664,7 +671,7 @@ def _analyze_multiple_dates(dates: List[str], filename: str) -> Dict:
         return {
             'classification': 'DEFINITELY_DDMMYY',
             'reason': (
-                f"🔴 DDMMYY FORMAT (INCORRECT) - Date(s) start with value outside "
+                f"DDMMYY FORMAT (INCORRECT) - Date(s) start with value outside "
                 f"valid year range [{MIN_YEAR}-{current_year}]: {', '.join(invalid_examples)}"
             ),
             'dates_analysis': dates_analysis
@@ -690,7 +697,7 @@ def _analyze_multiple_dates(dates: List[str], filename: str) -> Dict:
         return {
             'classification': 'DEFINITELY_YYMMDD',
             'reason': (
-                f"✅ YYMMDD FORMAT (CORRECT) - All dates start with valid year "
+                f"YYMMDD FORMAT (CORRECT) - All dates start with valid year "
                 f"[{MIN_YEAR}-{current_year}] and date(s) end outside this range: "
                 f"{', '.join(invalid_examples)}"
             ),
@@ -701,7 +708,7 @@ def _analyze_multiple_dates(dates: List[str], filename: str) -> Dict:
     return {
         'classification': 'AMBIGUOUS',
         'reason': (
-            f"⚠️ AMBIGUOUS - All values could be valid in either format. "
+            f"AMBIGUOUS - All values could be valid in either format. "
             f"Dates: {', '.join(d['date_str'] for d in dates_analysis)}"
         ),
         'dates_analysis': dates_analysis
@@ -746,21 +753,17 @@ def print_date_format_report(date_check_results: Dict) -> None:
     """
     suspicious_files = date_check_results['suspicious_files']
     issue_details = date_check_results['issue_details']
-    
+
     if not suspicious_files:
-        print(f"{Fore.GREEN}✓ No date format issues detected!{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}✓ Nothing to show.{Style.RESET_ALL}\n")
         return
-    
-    print(f"{Fore.YELLOW}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}Potential Date Format Issues Found{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{'='*70}{Style.RESET_ALL}\n")
-    print(f"⚠ Found {Fore.RED}{len(suspicious_files)}{Style.RESET_ALL} files with potential date format issues:\n")
-    
+
+    print()
     for i, file_path in enumerate(sorted(suspicious_files), 1):
-        print(f"{Fore.CYAN}{i}. {file_path}{Style.RESET_ALL}")
-        for issue in issue_details[file_path]:
-            print(f"   {Fore.YELLOW}⚠{Style.RESET_ALL} {issue}")
-        print()
+        print(f"{Fore.CYAN}  {i:3d}. {os.path.basename(file_path)}{Style.RESET_ALL}")
+        for issue in issue_details.get(file_path, []):
+            print(f"       {issue}")
+    print()
 
 
 def export_date_issues(date_check_results: Dict, export_path: Optional[str] = None) -> None:
@@ -794,7 +797,7 @@ def export_date_issues(date_check_results: Dict, export_path: Optional[str] = No
     for i, file_path in enumerate(sorted(suspicious_files), 1):
         export_lines.append(f"\n{i}. {file_path}")
         for issue in issue_details[file_path]:
-            export_lines.append(f"   ⚠ {issue}")
+            export_lines.append(f"   - {issue}")
     
     try:
         with open(export_path, 'w', encoding='utf-8') as f:
@@ -802,6 +805,14 @@ def export_date_issues(date_check_results: Dict, export_path: Optional[str] = No
         print(f"{Fore.GREEN}✓ Date issues report exported to: {export_path}{Style.RESET_ALL}\n")
     except Exception as e:
         print(f"{Fore.RED}✗ Error exporting report: {str(e)}{Style.RESET_ALL}\n")
+
+
+def _looks_like_yyyymmdd(s: str) -> bool:
+    """True if an 8-digit token is a plausible YYYYMMDD date (year 20xx)."""
+    return (len(s) == 8 and s.startswith('20') and
+            10 <= int(s[2:4]) <= 39 and
+            1 <= int(s[4:6]) <= 12 and
+            1 <= int(s[6:8]) <= 31)
 
 
 def check_files(root_directory: str) -> Dict:
@@ -841,13 +852,12 @@ def check_files(root_directory: str) -> Dict:
     date_analysis_results = {}    # Store full analysis for each file
     
     # Regex patterns
-    date_pattern = re.compile(r'(?:^|-)(\d{6})(?=-|\.)')
+    date_pattern = re.compile(r'(?:^|-)(\d{6})(?=-|\.)')          # YYMMDD  (2-digit year)
+    date8_pattern = re.compile(r'(?:^|[-_])(\d{8})(?=[-_.]|$)')   # YYYYMMDD (4-digit year)
     days_pattern = re.compile(r'\d{2}D')
     
-    print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}File Checker - Analyzing directory structure{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}\n")
-    print(f"{Fore.MAGENTA}Scanning: {root_directory}{Style.RESET_ALL}\n")
+    _section("CHECKING FILES")
+    print(f"{Fore.LIGHTBLACK_EX}Scanning {root_directory}{Style.RESET_ALL}\n")
     
     # =========================================================================
     # FIRST PASS: Collect all .mzz files
@@ -860,7 +870,7 @@ def check_files(root_directory: str) -> Dict:
                 all_mzz_files.append((current_path, filename))
     
     if not all_mzz_files:
-        print(f"{Fore.RED}❌ No .mzz files were found in the selected directory.{Style.RESET_ALL}")
+        print(f"{Fore.RED}No .mzz files were found in the selected directory.{Style.RESET_ALL}")
         return None
     
     print(f"{Fore.GREEN}Found {len(all_mzz_files)} .mzz files{Style.RESET_ALL}\n")
@@ -878,19 +888,24 @@ def check_files(root_directory: str) -> Dict:
         parts = name_without_ext.split('-')
         metadata = parts
         
-        # Count dates and check for days notation
-        num_dates = len(date_pattern.findall(filename))
+        # Count dates and check for days notation. Both YYMMDD and YYYYMMDD
+        # count as one date each, so a 4-digit-year file shares the same naming
+        # scheme as its 2-digit peers instead of being flagged as a minority.
+        six_digit_dates = date_pattern.findall(filename)
+        eight_digit_dates = [d for d in date8_pattern.findall(filename)
+                             if _looks_like_yyyymmdd(d)]
+        num_dates = len(six_digit_dates) + len(eight_digit_dates)
         has_days = bool(days_pattern.search(filename))
-        
+
         # Create metadata signature
         metadata_key = (len(metadata), num_dates, has_days)
         metadata_counts[metadata_key] += 1
         scheme_files[metadata_key].append(file_path)
-        
-        # Check for date format issues
-        dates = date_pattern.findall(filename)
-        if dates:
-            analysis = _analyze_multiple_dates(dates, filename)
+
+        # Date-order checks (DDMMYY vs YYMMDD) apply only to 2-digit-year dates;
+        # 4-digit-year dates are unambiguous and handled by the format step.
+        if six_digit_dates:
+            analysis = _analyze_multiple_dates(six_digit_dates, filename)
             date_analysis_results[file_path] = analysis
             
             if analysis['classification'] == 'DEFINITELY_DDMMYY':
@@ -923,7 +938,7 @@ def check_files(root_directory: str) -> Dict:
                 files_resolved_by_global.append(file_path)
                 original_reason = date_issue_details[file_path][0] if date_issue_details[file_path] else ""
                 date_issue_details[file_path] = [
-                    f"🔴 RESOLVED BY GLOBAL CONSENSUS: Marked as DDMMYY (incorrect) - "
+                    f"RESOLVED BY GLOBAL CONSENSUS: Marked as DDMMYY (incorrect) - "
                     f"directory has {num_definite_ddmmyy} definite DDMMYY vs {num_definite_yymmdd} definite YYMMDD files",
                     f"   Original: {original_reason}"
                 ]
@@ -939,17 +954,17 @@ def check_files(root_directory: str) -> Dict:
             # No definite files at all - all remain ambiguous
             global_consensus = None
             final_ambiguous = files_ambiguous
-            print(f"{Fore.YELLOW}⚠️  No definite date formats found in directory. "
+            print(f"{Fore.YELLOW}No definite date formats found in directory. "
                   f"{len(files_ambiguous)} file(s) remain ambiguous.{Style.RESET_ALL}\n")
         else:
             # Equal number of definite files - ambiguous remain ambiguous
             global_consensus = None
             final_ambiguous = files_ambiguous
-            print(f"{Fore.YELLOW}⚠️  Equal number of DDMMYY ({num_definite_ddmmyy}) and YYMMDD ({num_definite_yymmdd}) files. "
+            print(f"{Fore.YELLOW}Equal number of DDMMYY ({num_definite_ddmmyy}) and YYMMDD ({num_definite_yymmdd}) files. "
                   f"{len(files_ambiguous)} file(s) remain ambiguous.{Style.RESET_ALL}\n")
         
         if global_consensus and files_resolved_by_global:
-            print(f"{Fore.CYAN}ℹ️  Resolved {len(files_resolved_by_global)} ambiguous file(s) by global consensus "
+            print(f"{Fore.CYAN}Resolved {len(files_resolved_by_global)} ambiguous file(s) by global consensus "
                   f"(majority format: {global_consensus}).{Style.RESET_ALL}\n")
     
     # Determine most common naming scheme
@@ -978,153 +993,112 @@ def print_analysis_summary(analysis_results: Dict) -> None:
     total_files = analysis_results['total_files']
     scheme_counts = analysis_results['scheme_counts']
     most_common_scheme = analysis_results['most_common_scheme']
-    files_with_definite_errors = analysis_results.get('files_with_definite_date_errors', [])
-    files_with_ambiguous = analysis_results.get('files_with_ambiguous_dates', [])
-    files_resolved_by_global = analysis_results.get('files_resolved_by_global_consensus', [])
-    
-    print(f"{Fore.YELLOW}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}File Analysis Summary{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{'='*70}{Style.RESET_ALL}\n")
-    print(f"Total .mzz files found: {Fore.GREEN}{total_files}{Style.RESET_ALL}")
-    
-    # Show date issues summary if any
-    if files_with_definite_errors or files_with_ambiguous or files_resolved_by_global:
-        if files_with_definite_errors:
-            resolved_count = len(files_resolved_by_global)
-            if resolved_count > 0:
-                print(f"Files with DEFINITE date errors: {Fore.RED}{len(files_with_definite_errors)}{Style.RESET_ALL} "
-                      f"({Fore.CYAN}{resolved_count} resolved by global consensus{Style.RESET_ALL})")
-            else:
-                print(f"Files with DEFINITE date errors: {Fore.RED}{len(files_with_definite_errors)}{Style.RESET_ALL}")
-        if files_with_ambiguous:
-            print(f"Files with AMBIGUOUS dates: {Fore.YELLOW}{len(files_with_ambiguous)}{Style.RESET_ALL}")
-        print()
-    else:
-        print()
-    
-    # Prepare table data
+
+    _section("NAMING SCHEMES")
+    _explain(
+        "Bad Blood reads data (sample, date, ...) from each file name, split",
+        "on \"-\". Files are grouped by structure: how many parts they have,",
+        "how many dates, and whether they carry a day tag such as 03D. The",
+        "structure most files share is treated as the expected one; files that",
+        "differ from it may fail to load.",
+    )
+    print(f"\nScanned {Fore.GREEN}{total_files}{Style.RESET_ALL} .mzz files.\n")
+
+    # One row per structure — date problems get their own section later.
     table_data = []
     for scheme, count in scheme_counts.most_common():
         length, num_dates, has_days = scheme
         percentage = (count / total_files) * 100
-        
         is_majority = scheme == most_common_scheme
-        status = f"{Fore.GREEN}✓ MAJORITY{Style.RESET_ALL}" if is_majority else f"{Fore.YELLOW}⚠ MINORITY{Style.RESET_ALL}"
-        
+        status = "✓ expected" if is_majority else "differs"
         table_data.append([
-            status,
-            count,
-            f"{percentage:.1f}%",
-            length,
-            num_dates,
-            "Yes" if has_days else "No"
+            status, count, f"{percentage:.0f}%", length, num_dates,
+            "yes" if has_days else "no",
         ])
-    
-    # Add definite date errors row if there are any
-    if files_with_definite_errors:
-        definite_percentage = (len(files_with_definite_errors) / total_files) * 100
-        table_data.append([
-            f"{Fore.RED}❌ DATE ERRORS{Style.RESET_ALL}",
-            len(files_with_definite_errors),
-            f"{definite_percentage:.1f}%",
-            "—",
-            "—",
-            "—"
-        ])
-    
-    # Add ambiguous dates row if there are any
-    if files_with_ambiguous:
-        ambiguous_percentage = (len(files_with_ambiguous) / total_files) * 100
-        table_data.append([
-            f"{Fore.YELLOW}⚠️  AMBIGUOUS{Style.RESET_ALL}",
-            len(files_with_ambiguous),
-            f"{ambiguous_percentage:.1f}%",
-            "—",
-            "—",
-            "—"
-        ])
-    
-    headers = ["Status", "Files", "%", "Metadata Parts", "Dates (YYMMDD)", "Has Days (##D)"]
+
+    headers = ["", "Files", "Share", "Name parts", "Dates", "Day tag"]
     print(tabulate(table_data, headers=headers, tablefmt="fancy_grid"))
+
+    if len(scheme_counts) == 1:
+        print(f"\n{Fore.GREEN}✓ All files share the same structure.{Style.RESET_ALL}")
+    else:
+        n_diff = total_files - scheme_counts[most_common_scheme]
+        print(f"\n{Fore.YELLOW}{n_diff} file(s) differ from the expected structure "
+              f"({_describe_scheme(most_common_scheme)}).{Style.RESET_ALL}")
     print()
 
 
-def list_minority_files(analysis_results: Dict, export: bool = False, 
-                       export_path: Optional[str] = None) -> None:
+def list_minority_files(analysis_results: Dict, export: bool = False,
+                       export_path: Optional[str] = None, show: bool = True) -> None:
     """
     Lists all files with minority naming schemes and optionally exports them.
-    
+
     Args:
         analysis_results: Dictionary from check_files() containing analysis data
         export: Whether to export the list to a text file
         export_path: Path for the export file (if export=True)
+        show: Whether to print the list to the console (False when only saving)
     """
     scheme_counts = analysis_results['scheme_counts']
     scheme_files = analysis_results['scheme_files']
     most_common_scheme = analysis_results['most_common_scheme']
     total_files = analysis_results['total_files']
-    
-    # Get minority schemes
+    root = analysis_results.get('root_directory', '')
+
     minority_schemes = {k: v for k, v in scheme_counts.items() if k != most_common_scheme}
-    
     if not minority_schemes:
-        print(f"{Fore.GREEN}✓ All files follow the majority naming scheme!{Style.RESET_ALL}\n")
+        if show:
+            print(f"{Fore.GREEN}✓ All files follow the expected structure.{Style.RESET_ALL}\n")
         return
-    
+
     total_minority = sum(minority_schemes.values())
-    
-    print(f"{Fore.YELLOW}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}Files with Minority Naming Schemes{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{'='*70}{Style.RESET_ALL}\n")
-    print(f"⚠ Found {Fore.RED}{total_minority}{Style.RESET_ALL} files ({(total_minority/total_files)*100:.1f}%) "
-          f"with non-standard naming:\n")
-    
-    # Prepare export content if needed
-    export_lines = []
-    if export:
-        export_lines.append("=" * 80)
-        export_lines.append("Bad Blood - Files with Minority Naming Schemes")
-        export_lines.append("=" * 80)
-        export_lines.append(f"\nTotal minority files: {total_minority} ({(total_minority/total_files)*100:.1f}%)")
-        export_lines.append(f"Total files: {total_files}\n")
-    
-    # List files grouped by scheme
-    for i, (scheme, count) in enumerate(sorted(minority_schemes.items(), 
+    expected_desc = _describe_scheme(most_common_scheme)
+
+    if show:
+        print(f"{Fore.YELLOW}The {total_minority} file(s) below don't match the expected "
+              f"structure{Style.RESET_ALL}")
+        print(f"{Fore.LIGHTBLACK_EX}(expected: {expected_desc}). Each group shows how it "
+              f"differs.{Style.RESET_ALL}\n")
+
+    export_lines = ["Bad Blood — files that differ from the expected naming structure",
+                    f"Expected: {expected_desc}",
+                    f"{total_minority} of {total_files} files differ", ""]
+
+    truncated = False
+    for i, (scheme, count) in enumerate(sorted(minority_schemes.items(),
                                                key=lambda x: x[1], reverse=True), 1):
-        length, num_dates, has_days = scheme
-        
-        print(f"{Fore.CYAN}Minority Scheme #{i}{Style.RESET_ALL} ({count} files):")
-        print(f"  • Metadata parts: {length}")
-        print(f"  • Dates (YYMMDD): {num_dates}")
-        print(f"  • Has days (##D): {'Yes' if has_days else 'No'}\n")
-        
-        if export:
-            export_lines.append(f"\n{'─' * 80}")
-            export_lines.append(f"Minority Scheme #{i} ({count} files):")
-            export_lines.append(f"  Metadata parts: {length}")
-            export_lines.append(f"  Dates (YYMMDD): {num_dates}")
-            export_lines.append(f"  Has days (##D): {'Yes' if has_days else 'No'}\n")
-        
-        # List files for this scheme
-        files = scheme_files[scheme]
-        for j, file_path in enumerate(sorted(files), 1):
-            print(f"    {j:3d}. {file_path}")
-            if export:
-                export_lines.append(f"    {j:3d}. {file_path}")
-        
-        print()
-    
-    # Export if requested
+        header = f"  Group {i} — {_describe_scheme(scheme)}  ({count} file(s)):"
+        if show:
+            print(f"{Fore.CYAN}{header}{Style.RESET_ALL}")
+        export_lines.append(header)
+
+        for j, file_path in enumerate(sorted(scheme_files[scheme])):
+            rel = os.path.relpath(file_path, root) if root else file_path
+            export_lines.append(f"      {rel}")
+            # Only a bounded sample is printed — the list can be huge.
+            if show and j < _MINORITY_PREVIEW:
+                print(f"      {rel}")
+        if show and count > _MINORITY_PREVIEW:
+            truncated = True
+            print(f"      {Fore.LIGHTBLACK_EX}... and {count - _MINORITY_PREVIEW} more"
+                  f"{Style.RESET_ALL}")
+        if show:
+            print()
+        export_lines.append("")
+
+    if show and truncated:
+        _explain(f"Only the first {_MINORITY_PREVIEW} of each group are shown above — "
+                 f"save to a file to see them all.")
+
     if export:
         if not export_path:
             export_path = os.path.join(os.getcwd(), "minority_files_report.txt")
-        
         try:
             with open(export_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(export_lines))
-            print(f"{Fore.GREEN}✓ Report exported to: {export_path}{Style.RESET_ALL}\n")
+            print(f"{Fore.GREEN}✓ Saved to: {export_path}{Style.RESET_ALL}\n")
         except Exception as e:
-            print(f"{Fore.RED}✗ Error exporting report: {str(e)}{Style.RESET_ALL}\n")
+            print(f"{Fore.RED}✗ Could not save the file: {str(e)}{Style.RESET_ALL}\n")
 
 
 def interactive_file_check(root_directory: Optional[str] = None) -> Dict:
@@ -1141,7 +1115,6 @@ def interactive_file_check(root_directory: Optional[str] = None) -> Dict:
     if not root_directory:
         root_directory = questionary.path(
             "Select the root directory to analyze:",
-            qmark="📂"
         ).ask()
         
         if not root_directory:
@@ -1162,198 +1135,146 @@ def interactive_file_check(root_directory: Optional[str] = None) -> Dict:
     # Print summary
     print_analysis_summary(analysis_results)
     
-    # Check if there are minority files
+    # --- Minority naming schemes: show them, then one optional save -------
     scheme_counts = analysis_results['scheme_counts']
-    most_common_scheme = analysis_results['most_common_scheme']
     has_minority = len(scheme_counts) > 1
-    
+
     if has_minority:
-        # Ask if user wants to see minority files
-        show_minority = questionary.confirm(
-            "Would you like to see the list of files with minority naming schemes?",
-            default=True
+        list_minority_files(analysis_results)          # always show the odd files
+        save_list = questionary.confirm(
+            "Save this list to a text file (in the scanned folder)?",
+            default=False,
         ).ask()
-        
-        if show_minority:
-            # Ask if user wants to export
-            export_list = questionary.confirm(
-                "Would you like to export this list to a text file?",
-                default=False
-            ).ask()
-            
-            export_path = None
-            if export_list:
-                default_export = os.path.join(root_directory, "minority_files_report.txt")
-                export_path = questionary.text(
-                    f"Enter export file path (or press Enter for default):",
-                    default=default_export
-                ).ask()
-            
-            list_minority_files(analysis_results, export=export_list, export_path=export_path)
-    else:
-        print(f"{Fore.GREEN}✓ All files follow the same naming scheme!{Style.RESET_ALL}\n")
-    
-    # Check for DEFINITE date format errors
+        if save_list:
+            export_path = os.path.join(root_directory, "minority_files_report.txt")
+            list_minority_files(analysis_results, export=True, export_path=export_path, show=False)
+
+    # --- Date formats ------------------------------------------------------
+    _section("DATE FORMATS")
+    _explain(
+        "Dates in file names are read as year-month-day. Two-digit years",
+        "(YYMMDD, e.g. 240515) and four-digit years (YYYYMMDD, e.g. 20240515)",
+        "are both fine. Bad Blood flags dates that look like DAY-month-year by",
+        "mistake, and can standardise everything onto one style.",
+    )
+
     files_with_definite_errors = analysis_results.get('files_with_definite_date_errors', [])
+    files_with_ambiguous = analysis_results.get('files_with_ambiguous_dates', [])
+
+    if not files_with_definite_errors and not files_with_ambiguous:
+        print(f"\n{Fore.GREEN}✓ No day/month-order problems found.{Style.RESET_ALL}")
+
+    # Files that look like DAY-month-year (DDMMYY) — very likely wrong.
     if files_with_definite_errors:
-        check_definite = questionary.confirm(
-            f"Would you like to see the list of {len(files_with_definite_errors)} files with DEFINITE date errors (DDMMYY format)?",
-            default=True
-        ).ask()
-        
-        if check_definite:
-            # Create date results for definite errors
-            date_results = {
-                'suspicious_files': files_with_definite_errors,
-                'issue_details': {k: v for k, v in analysis_results.get('date_issue_details', {}).items() 
-                                 if k in files_with_definite_errors}
-            }
+        n = len(files_with_definite_errors)
+        print(f"\n{Fore.RED}✗ {n} file(s) look like DAY-month-year (DDMMYY).{Style.RESET_ALL}")
+        _explain(
+            "  e.g. 150524 meaning 15 May 2024, where Bad Blood expects 240515.",
+            "  Left as they are, these dates will be read incorrectly.",
+        )
+        date_results = {
+            'suspicious_files': files_with_definite_errors,
+            'issue_details': {k: v for k, v in analysis_results.get('date_issue_details', {}).items()
+                             if k in files_with_definite_errors},
+        }
+        if questionary.confirm(f"Show the {n} affected file(s)?", default=True).ask():
             print_date_format_report(date_results)
-            
-            # Offer to export
-            export_definite = questionary.confirm(
-                "Would you like to export the definite date errors report?",
-                default=False
-            ).ask()
-            
-            if export_definite:
-                default_export = os.path.join(root_directory, "definite_date_errors.txt")
-                definite_export_path = questionary.text(
-                    f"Enter export file path (or press Enter for default):",
-                    default=default_export
-                ).ask()
-                export_date_issues(date_results, export_path=definite_export_path)
-        
-        # Always offer to rename DDMMYY files to YYMMDD (outside the view list block)
-        rename_ddmmyy = questionary.confirm(
-            f"Would you like to rename these {len(files_with_definite_errors)} files from DDMMYY to YYMMDD format?",
-            default=False
-        ).ask()
-        
-        if rename_ddmmyy:
-            # Show preview first
+
+        if questionary.confirm(
+            f"Rename them to YYMMDD (fix the day/month order)?", default=False
+        ).ask():
             preview_ddmmyy_to_yymmdd_rename(files_with_definite_errors)
-            
-            # Confirm before proceeding
-            confirm_rename = questionary.confirm(
-                f"⚠️  This will rename {len(files_with_definite_errors)} files. Are you sure?",
-                default=False
-            ).ask()
-            
-            if confirm_rename:
+            if questionary.confirm(f"Proceed and rename {n} file(s)?", default=False).ask():
                 print(f"\n{Fore.CYAN}Renaming files...{Style.RESET_ALL}\n")
                 successful, failed = rename_files_ddmmyy_to_yymmdd(
-                    files_with_definite_errors, 
-                    analysis_results.get('date_issue_details', {})
+                    files_with_definite_errors,
+                    analysis_results.get('date_issue_details', {}),
                 )
-                print(f"\n{Fore.GREEN}✓ Successfully renamed: {successful}{Style.RESET_ALL}")
+                print(f"\n{Fore.GREEN}✓ Renamed: {successful}{Style.RESET_ALL}")
                 if failed > 0:
-                    print(f"{Fore.RED}✗ Failed to rename: {failed}{Style.RESET_ALL}")
+                    print(f"{Fore.RED}✗ Failed: {failed}{Style.RESET_ALL}")
             else:
                 print(f"{Fore.YELLOW}Renaming cancelled.{Style.RESET_ALL}")
-    
-    # Check for AMBIGUOUS dates
-    files_with_ambiguous = analysis_results.get('files_with_ambiguous_dates', [])
+
+    # Files whose date can't be resolved automatically — need a human eye.
     if files_with_ambiguous:
-        check_ambiguous = questionary.confirm(
-            f"Would you like to see the list of {len(files_with_ambiguous)} files with AMBIGUOUS dates (require manual verification)?",
-            default=False  # Default to No since these require manual review
-        ).ask()
-        
-        if check_ambiguous:
-            # Create date results for ambiguous dates
-            date_results = {
-                'suspicious_files': files_with_ambiguous,
-                'issue_details': {k: v for k, v in analysis_results.get('date_issue_details', {}).items() 
-                                 if k in files_with_ambiguous}
-            }
+        n = len(files_with_ambiguous)
+        print(f"\n{Fore.YELLOW}? {n} file(s) have dates that can't be resolved automatically.{Style.RESET_ALL}")
+        _explain(
+            "  Both readings are plausible (e.g. 120324) and the folder has no",
+            "  clear majority, so Bad Blood won't guess. Review them by hand.",
+        )
+        date_results = {
+            'suspicious_files': files_with_ambiguous,
+            'issue_details': {k: v for k, v in analysis_results.get('date_issue_details', {}).items()
+                             if k in files_with_ambiguous},
+        }
+        if questionary.confirm(f"Show the {n} file(s) to review?", default=False).ask():
             print_date_format_report(date_results)
-            
-            # Offer to export
-            export_ambiguous = questionary.confirm(
-                "Would you like to export the ambiguous dates report?",
-                default=False
-            ).ask()
-            
-            if export_ambiguous:
-                default_export = os.path.join(root_directory, "ambiguous_dates.txt")
-                ambiguous_export_path = questionary.text(
-                    f"Enter export file path (or press Enter for default):",
-                    default=default_export
-                ).ask()
-                export_date_issues(date_results, export_path=ambiguous_export_path)
-    
-    # Check for 4-digit year format (YYYY-MM-DD instead of YY-MM-DD)
-    four_digit_results = check_four_digit_year_dates(root_directory)
-    if four_digit_results['total_found'] > 0:
-        check_4digit = questionary.confirm(
-            f"Found {four_digit_results['total_found']} files with 4-digit year format (YYYY instead of YY). Would you like to see them?",
-            default=True
-        ).ask()
-        
-        if check_4digit:
-            print_4digit_year_report(four_digit_results)
-        
-        # Always offer to rename files (outside the view list block)
-        rename_files = questionary.confirm(
-            f"Would you like to rename these {four_digit_results['total_found']} files to use 2-digit year format (YY-MM-DD)?",
-            default=False
-        ).ask()
-        
-        if rename_files:
-            # Confirm before proceeding
-            confirm_rename = questionary.confirm(
-                f"⚠️  This will rename {four_digit_results['total_found']} files. Are you sure?",
-                default=False
-            ).ask()
-            
-            if confirm_rename:
-                print(f"\n{Fore.CYAN}Renaming files...{Style.RESET_ALL}\n")
-                successful, failed = rename_files_4digit_to_2digit(four_digit_results['files_with_4digit_years'])
-                print(f"\n{Fore.GREEN}✓ Successfully renamed: {successful}{Style.RESET_ALL}")
-                if failed > 0:
-                    print(f"{Fore.RED}✗ Failed to rename: {failed}{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.YELLOW}Renaming cancelled.{Style.RESET_ALL}")
-    
-    # Offer to convert between YYMMDD and YYYYMMDD formats
-    # Only offer if there are no date format errors (DDMMYY) to fix first
+
+    # =====================================================================
+    # Date-format preference: YYMMDD (2-digit year) vs YYYYMMDD (4-digit year)
+    #
+    # Both are treated as valid formats — neither is an error. If BOTH coexist
+    # in the directory we ask which one to standardise on and rename the others.
+    # Only offered once the DDMMYY / ambiguous checks above are clean, so a
+    # mis-ordered date is never blindly converted.
+    # =====================================================================
     files_with_definite_errors = analysis_results.get('files_with_definite_date_errors', [])
     files_with_ambiguous = analysis_results.get('files_with_ambiguous_dates', [])
-    
+
     if not files_with_definite_errors and not files_with_ambiguous:
-        # Check current state: do we have YYMMDD or YYYYMMDD files?
-        four_digit_count = four_digit_results['total_found'] if four_digit_results else 0
-        files_with_yymmdd = get_files_with_yymmdd_dates(root_directory)
-        yymmdd_count = len(files_with_yymmdd)
-        
-        if four_digit_count == 0 and yymmdd_count > 0:
-            # All files are in YYMMDD format - offer to convert to YYYYMMDD
-            print(f"\n{Fore.GREEN}✓ All date formats are correct (YYMMDD).{Style.RESET_ALL}")
-            convert_to_4digit = questionary.confirm(
-                f"Would you like to convert {yymmdd_count} files from YYMMDD to YYYYMMDD format?",
-                default=False
+        four_digit_results = check_four_digit_year_dates(root_directory)
+        files_yyyymmdd = four_digit_results['files_with_4digit_years']   # list of (path, dates)
+        files_yymmdd = get_files_with_yymmdd_dates(root_directory)       # list of paths
+        n8, n6 = len(files_yyyymmdd), len(files_yymmdd)
+
+        if n6 > 0 and n8 > 0:
+            print(f"\n{Fore.YELLOW}This folder mixes two date styles:{Style.RESET_ALL}")
+            print(f"    YYMMDD   (2-digit year): {Fore.CYAN}{n6}{Style.RESET_ALL} file(s)")
+            print(f"    YYYYMMDD (4-digit year): {Fore.CYAN}{n8}{Style.RESET_ALL} file(s)")
+            _explain("  You can rename the files so they all share one style.")
+
+            choice_yy = f"Use YYMMDD   — rename the {n8} four-digit file(s)"
+            choice_yyyy = f"Use YYYYMMDD — rename the {n6} two-digit file(s)"
+            choice_keep = "Leave the names as they are"
+            preferred = questionary.select(
+                "Which date style should all files use?",
+                choices=[choice_yy, choice_yyyy, choice_keep],
             ).ask()
-            
-            if convert_to_4digit:
-                # Show preview first
-                preview_yymmdd_to_yyyymmdd_rename(files_with_yymmdd)
-                
-                # Confirm before proceeding
-                confirm_convert = questionary.confirm(
-                    f"⚠️  This will rename {yymmdd_count} files. Are you sure?",
-                    default=False
-                ).ask()
-                
-                if confirm_convert:
-                    print(f"\n{Fore.CYAN}Converting files...{Style.RESET_ALL}\n")
-                    successful, failed = rename_files_yymmdd_to_yyyymmdd(files_with_yymmdd)
-                    print(f"\n{Fore.GREEN}✓ Successfully converted: {successful}{Style.RESET_ALL}")
+
+            if preferred == choice_yy:
+                # Standardise on 2-digit year: rename the YYYYMMDD files down.
+                print_4digit_year_report(four_digit_results)
+                if questionary.confirm(f"Rename {n8} file(s) to YYMMDD?", default=False).ask():
+                    print(f"\n{Fore.CYAN}Renaming files...{Style.RESET_ALL}\n")
+                    successful, failed = rename_files_4digit_to_2digit(files_yyyymmdd)
+                    print(f"\n{Fore.GREEN}✓ Renamed: {successful}{Style.RESET_ALL}")
                     if failed > 0:
-                        print(f"{Fore.RED}✗ Failed to convert: {failed}{Style.RESET_ALL}")
+                        print(f"{Fore.RED}✗ Failed: {failed}{Style.RESET_ALL}")
                 else:
-                    print(f"{Fore.YELLOW}Conversion cancelled.{Style.RESET_ALL}")
-    
+                    print(f"{Fore.YELLOW}Left unchanged.{Style.RESET_ALL}")
+
+            elif preferred == choice_yyyy:
+                # Standardise on 4-digit year: rename the YYMMDD files up.
+                preview_yymmdd_to_yyyymmdd_rename(files_yymmdd)
+                if questionary.confirm(f"Rename {n6} file(s) to YYYYMMDD?", default=False).ask():
+                    print(f"\n{Fore.CYAN}Renaming files...{Style.RESET_ALL}\n")
+                    successful, failed = rename_files_yymmdd_to_yyyymmdd(files_yymmdd)
+                    print(f"\n{Fore.GREEN}✓ Renamed: {successful}{Style.RESET_ALL}")
+                    if failed > 0:
+                        print(f"{Fore.RED}✗ Failed: {failed}{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}Left unchanged.{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}Left unchanged.{Style.RESET_ALL}")
+
+        elif n6 > 0:
+            print(f"\n{Fore.GREEN}✓ All dates use one style (YYMMDD).{Style.RESET_ALL}")
+        elif n8 > 0:
+            print(f"\n{Fore.GREEN}✓ All dates use one style (YYYYMMDD).{Style.RESET_ALL}")
+
+    print()
     return analysis_results
 
 

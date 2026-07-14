@@ -1,0 +1,2 @@
+[console_scripts]
+bad-blood = bad_blood_pkg.tui.cli:main

@@ -1,0 +1,242 @@
+Metadata-Version: 2.4
+Name: bad-blood
+Version: 2.0.0
+Summary: A comprehensive tool for processing FTIR spectral data from .mzz files
+Home-page: https://github.com/mariogj/bad-blood
+Author: Mario González-Jiménez
+Author-email: mario.gonzalez-jimenez@glasgow.ac.uk
+Project-URL: Bug Reports, https://github.com/mariogj/bad-blood/issues
+Project-URL: Source, https://github.com/mariogj/bad-blood
+Project-URL: Documentation, https://github.com/mariogj/bad-blood/wiki
+Keywords: ftir spectroscopy infrared analysis chemistry physics research data-processing
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Chemistry
+Classifier: Topic :: Scientific/Engineering :: Physics
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: matplotlib>=3.4.0
+Requires-Dist: scikit-learn>=1.0.0
+Requires-Dist: questionary>=1.10.0
+Requires-Dist: colorama>=0.4.4
+Requires-Dist: tqdm>=4.62.0
+Requires-Dist: pyarrow>=12.0.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license-file
+Dynamic: project-url
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Bad Blood 2.0
+
+**Bad Blood** is a comprehensive command-line tool for processing FTIR (Fourier Transform Infrared) spectral data from `.mzz` files. Developed at the University of Glasgow, it provides automated quality control, metadata extraction, and flexible data export capabilities for spectroscopic research.
+
+## Features
+
+### Core Functionality
+- **Automated File Analysis**: Recursively scans directories for `.mzz` spectral files and analyzes naming schemes
+- **Unified Data Matrix**: Creates interpolated spectral matrices with consistent wavenumber grids
+- **Metadata Extraction**: Intelligent parsing of filename metadata with automatic date and age detection
+- **Quality Control**: Multi-stage filtering system for problematic spectra
+
+### Quality Control Filters
+1. **Abnormal Background Detection**: Identifies interferometer errors using IQR-based outlier detection at 1900 cm⁻¹
+2. **Atmospheric Interference Detection**: Detects water vapor and CO₂ contamination using polynomial fitting (3900-3500 cm⁻¹)
+3. **Low-Intensity Signal Detection**: Filters spectra with insufficient signal strength in the fingerprint region (600-400 cm⁻¹)
+
+### Interactive Features
+- **Wavenumber Selection**: Visual preview and selection of specific spectral regions
+- **Metadata Filtering**: Interactive filtering based on categorical metadata
+- **Export Options**: Multiple file formats (Parquet, CSV, Excel) with customizable column selection
+
+## Installation
+
+### From Source
+```bash
+git clone https://github.com/magonji/bad-blood.git
+cd bad-blood
+pip install -e .
+```
+
+### Requirements
+- Python 3.8 or higher
+- See `requirements.txt` for detailed dependencies
+
+## Quick Start
+
+After installation, launch the full-screen Bad Blood interface:
+
+```bash
+bad-blood
+```
+
+From a checkout without installing, the same launcher is:
+
+```bash
+python bad_blood_tui.py
+```
+
+### Basic Workflow
+
+Bad Blood is a full-screen terminal app. Navigate the pipeline with the
+keyboard — nothing is typed as a command:
+
+- **↑ ↓** (or **j / k**) — move between steps
+- **⏎** — run the highlighted step / confirm a choice
+- **␣** — toggle an item in multi-select lists
+- **← / Esc** — go back / cancel the current prompt
+- **q** or **Ctrl-C** — quit
+
+Work through the pipeline top to bottom:
+
+1. **Check files** *(optional, recommended first)* — audit naming schemes and date-format errors.
+2. **Load spectra** — scan `.mzz` files and build the unified matrix.
+3. **Prepare (QC)** — apply the quality-control filters.
+4. **Export** — pick wavenumbers, optionally filter metadata, and write the Parquet file.
+
+Each step opens its own prompts as native full-screen widgets; progress and log
+output appear in-place without leaving the interface.
+
+## File Format Support
+
+### Input
+- **`.mzz` files**: Compressed spectral data files containing:
+  - Wavenumber range and resolution information
+  - Absorbance data arrays
+  - Embedded metadata in filenames
+
+### Output
+- **Parquet file**
+
+## Metadata Naming Schemes
+
+Bad Blood automatically detects and processes various metadata naming schemes:
+
+### Supported Patterns
+- **Date Format**: `YYMMDD` (e.g., `240815` for August 15, 2024)
+- **Age Format**: `##D` (e.g., `5D` for 5 days old)
+- **Categorical Data**: Any alphanumeric identifiers
+
+### Example Filename
+```
+experiment1-UK-rep1-240815-240820-240825-mosquito-5D-alive-rear1-nulliparous-susceptible-unexposed-001.mzz
+```
+
+This would be parsed as:
+- experiment: experiment1
+- country: UK
+- replica: rep1
+- collection_date: 240815
+- killing_date: 240820
+- measurement_date: 240825
+- species: mosquito
+- age: 5D
+- status: alive
+- rear: rear1
+- parity: nulliparous
+- resistance: susceptible
+- exposure: unexposed
+
+## Quality Control Details
+
+### Abnormal Background Filter
+- **Method**: Interquartile Range (IQR) outlier detection
+- **Target**: 1900 cm⁻¹ absorbance values
+- **Threshold**: 2.5 × IQR (adjustable)
+- **Purpose**: Remove spectra with interferometer errors
+
+### Atmospheric Interference Filter
+- **Method**: 5th-degree polynomial fitting
+- **Region**: 3900-3500 cm⁻¹
+- **Threshold**: R² < 0.96
+- **Purpose**: Detect water vapor and CO₂ contamination
+
+### Low-Intensity Filter
+- **Method**: Average absorbance calculation
+- **Region**: 600-400 cm⁻¹ plateau
+- **Threshold**: < 0.11 absorbance units
+- **Purpose**: Remove spectra with insufficient signal
+
+## Configuration
+
+### Default Parameters
+- Background filter threshold: 2.5 × IQR
+- Atmospheric interference R² threshold: 0.96
+- Low-intensity threshold: 0.11 absorbance units
+- Fingerprint region: 600-400 cm⁻¹
+- Atmospheric region: 3900-3500 cm⁻¹
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+### Development Setup
+```bash
+git clone https://github.com/magonji/bad-blood.git
+cd bad-blood
+pip install -e ".[dev]"
+```
+
+## Citation
+
+If you use Bad Blood in your research, please cite:
+
+```bibtex
+@software{gonzalez_jimenez_2025_bad_blood,
+  author       = {González-Jiménez, Mario},
+  title        = {Bad Blood: FTIR Spectral Analysis Tool},
+  version      = {2.0.0},
+  year         = {2025},
+  institution  = {University of Glasgow},
+  url          = {https://github.com/magonji/bad-blood}
+}
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Author
+
+**Mario González-Jiménez**  
+University of Glasgow  
+Email: mario.gonzalezjimenez@glasgow.ac.uk
+
+## Changelog
+
+### Version 2.0.0 (August 2025)
+- Complete rewrite with modular architecture
+- Interactive quality control with visual feedback
+- Smart metadata detection and naming
+- Multiple export formats support
+- Comprehensive error handling
+- Improved user experience with colored terminal output
+
+## Support
+
+For questions, bug reports, or feature requests, please:
+1. Check the [documentation](https://github.com/magonji/bad-blood/wiki)
+2. Search [existing issues](https://github.com/magonji/bad-blood/issues)
+3. Create a [new issue](https://github.com/magonji/bad-blood/issues/new) if needed
+
+
+

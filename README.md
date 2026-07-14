@@ -35,7 +35,13 @@ pip install -e .
 
 ## Quick Start
 
-After installation, launch Bad Blood from the command line:
+After installation, launch the full-screen Bad Blood interface:
+
+```bash
+bad-blood
+```
+
+From a checkout without installing, the same launcher is:
 
 ```bash
 python bad_blood.py
@@ -43,31 +49,24 @@ python bad_blood.py
 
 ### Basic Workflow
 
-1. **Load spectral data**:
-   ```
-   > load "/path/to/your/data"
-   ```
-   Or simply use `load` to open a file browser.
+Bad Blood is a full-screen terminal app. Navigate the pipeline with the
+keyboard — nothing is typed as a command:
 
-2. **Apply quality control**:
-   ```
-   > prepare
-   ```
+- **↑ ↓** (or **j / k**) — move between steps
+- **⏎** — run the highlighted step / confirm a choice
+- **␣** — toggle an item in multi-select lists
+- **← / Esc** — go back / cancel the current prompt
+- **q** or **Ctrl-C** — quit
 
-3. **Export processed data**:
-   ```
-   > export
-   ```
+Work through the pipeline top to bottom:
 
-### Command Reference
+1. **Check files** *(optional, recommended first)* — audit naming schemes and date-format errors.
+2. **Load spectra** — scan `.mzz` files and build the unified matrix.
+3. **Prepare (QC)** — apply the quality-control filters.
+4. **Export** — pick wavenumbers, optionally filter metadata, and write the Parquet file.
 
-| Command | Description |
-|---------|-------------|
-| `load "directory"` | Load and analyze `.mzz` files from specified directory |
-| `prepare` | Apply quality control filters to remove problematic spectra |
-| `export` | Export processed data with interactive options |
-| `help` | Display available commands |
-| `exit` | Exit the program |
+Each step opens its own prompts as native full-screen widgets; progress and log
+output appear in-place without leaving the interface.
 
 ## File Format Support
 

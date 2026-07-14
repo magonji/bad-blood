@@ -14,6 +14,8 @@ import questionary
 from colorama import Fore, Style
 from tqdm import tqdm
 
+from bad_blood_pkg.console_ui import section
+
 pd.set_option('display.max_columns', None)  # Mostrar todas las columnas
 pd.set_option('display.width', None)       # Sin límite de ancho
 pd.set_option('display.max_colwidth', 100)
@@ -211,26 +213,26 @@ def handle_prepare_command(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         Quality-filtered DataFrame
     """
-    print(f"\n{Fore.MAGENTA}Starting Quality Control Analysis{Style.RESET_ALL}")
+    section("QUALITY CONTROL")
     print(f"Initial dataset: {len(df)} spectra")
 
     # Stage 1: Remove duplicate spectra
-    print(f"\n{Fore.LIGHTBLUE_EX}Stage 1: Duplicate Spectra Removal{Style.RESET_ALL}")
+    section("DUPLICATE SPECTRA")
     filtered_df = filter_duplicate_spectra(df)
 
     # Stage 2: Filter abnormal backgrounds
-    print(f"\n{Fore.LIGHTBLUE_EX}Stage 2: Abnormal Background Detection{Style.RESET_ALL}")
+    section("ABNORMAL BACKGROUND")
     filtered_df = abnormal_background_filter(filtered_df)
 
     # Stage 3: Filter atmospheric interference
-    print(f"\n{Fore.LIGHTBLUE_EX}Stage 3: Atmospheric Interference Detection{Style.RESET_ALL}")
+    section("ATMOSPHERIC INTERFERENCE")
     filtered_df = filter_atmospheric_interference(filtered_df)
 
     # Stage 4: Filter low-intensity spectra
-    print(f"\n{Fore.LIGHTBLUE_EX}Stage 4: Low-Intensity Signal Detection{Style.RESET_ALL}")
+    section("LOW-INTENSITY SIGNAL")
     filtered_df = filter_low_intensity_spectra(filtered_df)
 
-    print(f"\n{Fore.GREEN}Quality Control Complete{Style.RESET_ALL}")
+    section("QUALITY CONTROL COMPLETE")
     print(f"Final dataset: {len(filtered_df)} spectra")
     print(f"Total removed: {len(df) - len(filtered_df)} spectra")
 

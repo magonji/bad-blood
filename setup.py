@@ -26,7 +26,7 @@ def read_requirements():
 
 setup(
     name="bad-blood",
-    version="2.0.0",
+    version="3.0.0",
     author="Mario González-Jiménez",
     author_email="mario.gonzalez-jimenez@glasgow.ac.uk",
     description="A comprehensive tool for processing FTIR spectral data from .mzz files",
@@ -52,7 +52,7 @@ setup(
     install_requires=read_requirements(),
     entry_points={
         'console_scripts': [
-            'bad-blood=bad_blood_pkg.bad_blood:main',
+            'bad-blood=bad_blood_pkg.tui.cli:main',
         ],
     },
     keywords="ftir spectroscopy infrared analysis chemistry physics research data-processing",

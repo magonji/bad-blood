@@ -18,6 +18,7 @@ colour_palette = plt.style.library['dark_background']['axes.prop_cycle'].by_key(
 
 from bad_blood_pkg import data_preparer
 from bad_blood_pkg import utils
+from bad_blood_pkg.console_ui import section
 
 
 
@@ -429,19 +430,16 @@ def handle_export_command(prepared_df: pd.DataFrame, source_directory) -> None:
     Args:
         prepared_df: Prepared DataFrame ready for export
     """
-    print(f"\n{Fore.MAGENTA}Starting Data Export Process{Style.RESET_ALL}")
-    
     # Step 1: Select wavenumbers
-    print(f"\n{Fore.LIGHTBLUE_EX}Step 1: Wavenumber Selection{Style.RESET_ALL}")
+    section("WAVENUMBER SELECTION")
     filtered_df = select_wavenumbers_interactive(prepared_df)
 
-    
     # Step 2: Optional metadata filtering
-    print(f"\n{Fore.LIGHTBLUE_EX}Step 3: Metadata Filtering (Optional){Style.RESET_ALL}")
+    section("METADATA FILTERING")
     final_df = apply_metadata_filters(filtered_df)
 
-    # Step 4: Export data
-    print(f"\n{Fore.LIGHTBLUE_EX}Step 4: Data Export{Style.RESET_ALL}")
+    # Step 3: Export data
+    section("WRITING FILE")
     export_data(final_df, source_directory)
-    
-    print(f"\n{Fore.GREEN}Export Process Complete{Style.RESET_ALL}")
+
+    section("EXPORT COMPLETE")

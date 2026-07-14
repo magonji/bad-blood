@@ -24,6 +24,7 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm
 
 from bad_blood_pkg import utils
+from bad_blood_pkg.console_ui import section, explain
 
 
 def find_spectra_files() -> Optional[str]:
@@ -35,7 +36,6 @@ def find_spectra_files() -> Optional[str]:
     """
     target_directory = questionary.path(
         "Please select the root directory to analyse:",
-        qmark="📂"
     ).ask()
 
     return target_directory
@@ -456,6 +456,38 @@ def _read_spectrum(file_path: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
 # DataFrame creation (memory-efficient)
 # =========================================================================
 
+# Detection patterns / thresholds for classifying a metadata column.
+_DATE_RE = re.compile(r'^\d{6}$|^\d{8}$')   # YYMMDD or YYYYMMDD
+_AGE_RE = re.compile(r'^\d{1,3}D$')         # #D, ##D, ###D
+# A "sample identifier" is a near-unique code, not a grouping category. Spotting
+# it avoids listing (and treating as categories) hundreds of one-off codes.
+_ID_MIN_UNIQUE = 10        # need at least this many distinct values to be an ID
+_ID_UNIQUE_RATIO = 0.5     # ...and this fraction of rows distinct (few repeats)
+_MAX_CATEGORIES = 30       # more distinct values than this is never a real category
+_CATEGORY_DISPLAY_CAP = 15  # how many category values to list before summarising
+
+
+def _classify_metadata_column(values: List[str]) -> Tuple[str, List[str]]:
+    """Classify a metadata column.
+
+    Returns (kind, sorted_unique_values) where kind is one of:
+    'date', 'age', 'id' (sample identifier / high-cardinality code), 'categorical'.
+    """
+    unique_values = sorted(set(values))
+    n_total = len(values)
+    n_unique = len(unique_values)
+
+    if n_unique and all(_DATE_RE.match(str(v)) for v in unique_values):
+        return 'date', unique_values
+    if n_unique and all(_AGE_RE.match(str(v)) for v in unique_values):
+        return 'age', unique_values
+
+    ratio = n_unique / n_total if n_total else 0.0
+    if n_unique > _MAX_CATEGORIES or (n_unique >= _ID_MIN_UNIQUE and ratio >= _ID_UNIQUE_RATIO):
+        return 'id', unique_values
+    return 'categorical', unique_values
+
+
 def _display_metadata_categories(metadata_list: List[List[str]], num_metadata_cols: int) -> None:
     """
     Displays unique categories for each metadata column, helping users understand
@@ -468,26 +500,21 @@ def _display_metadata_categories(metadata_list: List[List[str]], num_metadata_co
     if not metadata_list:
         return
 
-    # Regex patterns for automatic detection
-    date_pattern = re.compile(r'^\d{6}$|^\d{8}$')  # YYMMDD or YYYYMMDD format
-    days_pattern = re.compile(r'^\d{1,3}D$')  # #D, ##D, ###D format
+    section("METADATA")
+    explain(
+        "Each part of the file name becomes a column. Columns are auto-detected",
+        "as dates, ages (##D), sample identifiers (near-unique codes) or",
+        "categories. Identifiers are summarised instead of listed in full.",
+    )
+    print()
 
-    print(f"\n{Fore.YELLOW}Metadata Categories Analysis{Style.RESET_ALL}")
-    print("Unique categories found in each metadata column:\n")
-
-    # Analyse each metadata column
     for col_idx in range(num_metadata_cols):
-        # Collect all values for this column
         values = [row[col_idx] for row in metadata_list]
-        unique_values = sorted(set(values))
-
-        # Check if it's a date or age column
-        is_date = all(date_pattern.match(str(val)) for val in unique_values)
-        is_age = all(days_pattern.match(str(val)) for val in unique_values)
+        kind, unique_values = _classify_metadata_column(values)
 
         print(f"{Fore.CYAN}metadata_{col_idx}:{Style.RESET_ALL}")
 
-        if is_date:
+        if kind == 'date':
             print(f"  {Fore.GREEN}[Detected: DATE]{Style.RESET_ALL}")
             print(f"  Unique dates: {len(unique_values)}")
             if len(unique_values) <= 10:
@@ -495,12 +522,23 @@ def _display_metadata_categories(metadata_list: List[List[str]], num_metadata_co
             else:
                 print(f"  Range: {unique_values[0]} to {unique_values[-1]}")
                 print(f"  First 10: {', '.join(map(str, unique_values[:10]))}")
-        elif is_age:
+        elif kind == 'age':
             print(f"  {Fore.GREEN}[Detected: AGE]{Style.RESET_ALL}")
             print(f"  Values: {', '.join(map(str, unique_values))}")
+        elif kind == 'id':
+            print(f"  {Fore.MAGENTA}[Detected: SAMPLE ID]{Style.RESET_ALL}")
+            print(f"  {len(unique_values)} unique codes — treated as an identifier, "
+                  f"not a category")
+            print(f"  Examples: {', '.join(map(str, unique_values[:5]))}, ...")
         else:
             print(f"  {Fore.LIGHTBLUE_EX}[Categorical Data]{Style.RESET_ALL}")
-            print(f"  Categories ({len(unique_values)}): {', '.join(map(str, unique_values))}")
+            if len(unique_values) <= _CATEGORY_DISPLAY_CAP:
+                print(f"  Categories ({len(unique_values)}): "
+                      f"{', '.join(map(str, unique_values))}")
+            else:
+                shown = ', '.join(map(str, unique_values[:_CATEGORY_DISPLAY_CAP]))
+                print(f"  Categories ({len(unique_values)}): {shown}, "
+                      f"... (+{len(unique_values) - _CATEGORY_DISPLAY_CAP} more)")
 
         print()  # Empty line for readability
 
@@ -519,33 +557,28 @@ def _generate_smart_column_names(metadata_list: List[List[str]], num_metadata_co
     if not metadata_list:
         return []
 
-    # Regex patterns for automatic detection
-    date_pattern = re.compile(r'^\d{6}$|^\d{8}$')  # YYMMDD or YYYYMMDD format
-    days_pattern = re.compile(r'^\d{1,3}D$')  # #D, ##D, ###D format
-
     # Counters for naming
     date_counter = 1
     days_counter = 1
+    id_counter = 1
     metadata_counter = 1
 
     column_names = []
 
     # Analyse each metadata column and assign smart names
     for col_idx in range(num_metadata_cols):
-        # Collect all values for this column
         values = [row[col_idx] for row in metadata_list]
-        unique_values = sorted(set(values))
+        kind, _ = _classify_metadata_column(values)
 
-        # Check if it's a date or age column
-        is_date = all(date_pattern.match(str(val)) for val in unique_values)
-        is_age = all(days_pattern.match(str(val)) for val in unique_values)
-
-        if is_date:
+        if kind == 'date':
             column_names.append(f"date_{date_counter}")
             date_counter += 1
-        elif is_age:
+        elif kind == 'age':
             column_names.append(f"days_{days_counter}")
             days_counter += 1
+        elif kind == 'id':
+            column_names.append(f"id_{id_counter}")
+            id_counter += 1
         else:
             column_names.append(f"metadata_{metadata_counter}")
             metadata_counter += 1
@@ -617,7 +650,6 @@ def _get_column_names_from_user(num_metadata_cols: int, metadata_list: List[List
     while True:
         user_input = questionary.text(
             f"Enter {num_metadata_cols} column names:",
-            qmark="📝",
             validate=lambda x: _validate_column_names(x, num_metadata_cols)
         ).ask()
 

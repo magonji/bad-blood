@@ -1,0 +1,24 @@
+================================================================================
+Bad Blood - Files with Minority Naming Schemes
+================================================================================
+
+Total minority files: 3 (0.0%)
+Total files: 91271
+
+
+────────────────────────────────────────────────────────────────────────────────
+Minority Scheme #1 (2 files):
+  Metadata parts: 14
+  Dates (YYMMDD): 2
+  Has days (##D): Yes
+
+      1. /Users/mario/Software/2025 - 02 - Mosquitos database/Mozambique/FD-M-R1-20231103-20231103-20223117-AT-99D-UF-UN-UK-UN-UN-IJ_104_CDC_0_030.0.mzz
+      2. /Users/mario/Software/2025 - 02 - Mosquitos database/Mozambique/FD-M-R1-20231103-20231103-20223117-AT-99D-UF-UN-UK-UN-UN-IJ_104_CDC_0_031.0.mzz
+
+────────────────────────────────────────────────────────────────────────────────
+Minority Scheme #2 (1 files):
+  Metadata parts: 14
+  Dates (YYMMDD): 1
+  Has days (##D): Yes
+
+      1. /Users/mario/Software/2025 - 02 - Mosquitos database/Tanzania/Field Data MIRS/An. Gambiae/Dissected mosquito/Alive/FD-T-R1-20232113-20232113-20240202-AG-99D-UN-UN-P1-UN-UN-TULH066ARM08787.0.mzz
