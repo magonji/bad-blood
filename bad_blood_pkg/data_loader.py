@@ -49,7 +49,7 @@ def analyse_mzz_files(root_directory: str) -> Optional[Tuple[int, int, bool]]:
         root_directory: Root directory path to search for .mzz files
 
     Returns:
-        Tuple of (metadata_length, num_dates, has_days) representing the most
+        Tuple of (metadata_length, num_dates, has_age) representing the most
         common naming scheme, or None if no files found
     """
     total_files = 0
@@ -58,7 +58,7 @@ def analyse_mzz_files(root_directory: str) -> Optional[Tuple[int, int, bool]]:
     # Regex patterns for extracting metadata elements
     # Date pattern: 6 or 8 digits between hyphens or before extension (avoids serial numbers)
     date_pattern = re.compile(r'(?:^|-)(\d{8}|\d{6})(?=-|\.)')  # YYYYMMDD or YYMMDD format
-    days_pattern = re.compile(r'\d{2}D')  # ##D format
+    age_pattern = utils.AGE_TAG_RE  # ##D / ##W / ##M / ##Y format
 
     print(f"\n{Fore.MAGENTA}Analysing files in directory: {root_directory}{Style.RESET_ALL}\n")
 
@@ -79,12 +79,12 @@ def analyse_mzz_files(root_directory: str) -> Optional[Tuple[int, int, bool]]:
                     parts = name_without_ext.split('-')
                     metadata = parts
 
-                    # Count dates and check for days notation
+                    # Count dates and check for an age tag (days/weeks/months/years)
                     num_dates = len(date_pattern.findall(filename))
-                    has_days = bool(days_pattern.search(filename))
+                    has_age = bool(age_pattern.search(filename))
 
                     # Create metadata signature
-                    metadata_key = (len(metadata), num_dates, has_days)
+                    metadata_key = (len(metadata), num_dates, has_age)
                     metadata_counts[metadata_key] += 1
 
     finally:
@@ -121,7 +121,7 @@ def _print_metadata_report(total_files: int,
     print(f"Total .mzz files found: {total_files}\n")
 
     for scheme, count in metadata_counts.items():
-        length, num_dates, has_days = scheme
+        length, num_dates, has_age = scheme
 
         is_most_common = scheme == most_common_scheme
         prefix = "Most common" if is_most_common else "Less common"
@@ -129,7 +129,8 @@ def _print_metadata_report(total_files: int,
         print(f"{prefix} naming scheme ({count} files):")
         print(f"   • Number of metadata parts: {length}")
         print(f"   • Number of dates (YYMMDD/YYYYMMDD): {num_dates}")
-        print(f"   • Contains days (##D): {'Yes' if has_days else 'No'}\n")
+        print(f"   • Contains an age tag ({utils.AGE_TAG_EXAMPLES}): "
+              f"{'Yes' if has_age else 'No'}\n")
 
 
 def load_and_process_spectra(root_directory: str,
@@ -463,7 +464,7 @@ def _read_spectrum(file_path: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
 
 # Detection patterns / thresholds for classifying a metadata column.
 _DATE_RE = re.compile(r'^\d{6}$|^\d{8}$')   # YYMMDD or YYYYMMDD
-_AGE_RE = re.compile(r'^\d{1,3}D$')         # #D, ##D, ###D
+_AGE_RE = utils.AGE_VALUE_RE                # #D/##D/###D and the W, M, Y units
 # A "sample identifier" is a near-unique code, not a grouping category. Spotting
 # it avoids listing (and treating as categories) hundreds of one-off codes.
 _ID_MIN_UNIQUE = 10        # need at least this many distinct values to be an ID
@@ -511,8 +512,9 @@ def _display_metadata_categories(metadata_list: List[List[str]], num_metadata_co
     section("METADATA")
     explain(
         "Each part of the file name becomes a column. Columns are auto-detected",
-        "as dates, ages (##D), sample identifiers (near-unique codes) or",
-        "categories. Identifiers are summarised instead of listed in full.",
+        f"as dates, ages ({utils.AGE_TAG_EXAMPLES}), sample identifiers",
+        "(near-unique codes) or categories. Identifiers are summarised instead",
+        "of listed in full.",
     )
     print()
 
@@ -531,7 +533,9 @@ def _display_metadata_categories(metadata_list: List[List[str]], num_metadata_co
                 print(f"  Range: {unique_values[0]} to {unique_values[-1]}")
                 print(f"  First 10: {', '.join(map(str, unique_values[:10]))}")
         elif kind == 'age':
-            print(f"  {Fore.GREEN}[Detected: AGE]{Style.RESET_ALL}")
+            unit = utils.age_unit(unique_values)
+            unit_label = f" in {utils.AGE_UNIT_NAMES[unit]}" if unit else " (mixed units)"
+            print(f"  {Fore.GREEN}[Detected: AGE{unit_label}]{Style.RESET_ALL}")
             print(f"  Values: {', '.join(map(str, unique_values))}")
         elif kind == 'id':
             print(f"  {Fore.MAGENTA}[Detected: SAMPLE ID]{Style.RESET_ALL}")
@@ -565,9 +569,10 @@ def _generate_smart_column_names(metadata_list: List[List[str]], num_metadata_co
     if not metadata_list:
         return []
 
-    # Counters for naming
+    # Counters for naming.  Age columns are counted per unit, so a file name
+    # carrying both 03D and 12M yields "days_1" and "months_1".
     date_counter = 1
-    days_counter = 1
+    age_counters: CounterType[str] = Counter()
     id_counter = 1
     metadata_counter = 1
 
@@ -576,14 +581,16 @@ def _generate_smart_column_names(metadata_list: List[List[str]], num_metadata_co
     # Analyse each metadata column and assign smart names
     for col_idx in range(num_metadata_cols):
         values = [row[col_idx] for row in metadata_list]
-        kind, _ = _classify_metadata_column(values)
+        kind, unique_values = _classify_metadata_column(values)
 
         if kind == 'date':
             column_names.append(f"date_{date_counter}")
             date_counter += 1
         elif kind == 'age':
-            column_names.append(f"days_{days_counter}")
-            days_counter += 1
+            unit = utils.age_unit(unique_values)
+            base = utils.AGE_UNIT_NAMES[unit] if unit else 'age'
+            age_counters[base] += 1
+            column_names.append(f"{base}_{age_counters[base]}")
         elif kind == 'id':
             column_names.append(f"id_{id_counter}")
             id_counter += 1

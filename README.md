@@ -90,7 +90,7 @@ Bad Blood automatically detects and processes various metadata naming schemes:
 
 ### Supported Patterns
 - **Date Format**: `YYMMDD` (e.g., `240815` for August 15, 2024)
-- **Age Format**: `##D` (e.g., `5D` for 5 days old)
+- **Age Format**: a number plus a unit letter — `D` days, `W` weeks, `M` months, `Y` years (e.g., `5D` for 5 days old, `6W`, `12M`, `2Y`). Columns are named after the unit (`days_1`, `weeks_1`, `months_1`, `years_1`).
 - **Categorical Data**: Any alphanumeric identifiers
 
 ### Example Filename

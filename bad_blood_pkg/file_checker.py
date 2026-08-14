@@ -18,6 +18,7 @@ from colorama import Fore, Style
 from tabulate import tabulate
 from tqdm import tqdm
 
+from bad_blood_pkg import utils
 from bad_blood_pkg.console_ui import section as _section, explain as _explain
 
 # File to store recently renamed files for quick re-verification
@@ -29,11 +30,11 @@ _MINORITY_PREVIEW = 8   # max filenames shown per minority group (lists can be h
 
 
 def _describe_scheme(scheme: Tuple[int, int, bool]) -> str:
-    """Turn a (parts, dates, has_days) signature into plain words."""
-    length, num_dates, has_days = scheme
+    """Turn a (parts, dates, has_age) signature into plain words."""
+    length, num_dates, has_age = scheme
     parts = [f"{length} name part" + ("" if length == 1 else "s")]
     parts.append(f"{num_dates} date" + ("" if num_dates == 1 else "s"))
-    parts.append("a day tag" if has_days else "no day tag")
+    parts.append("an age tag" if has_age else "no age tag")
     return ", ".join(parts)
 
 
@@ -854,8 +855,8 @@ def check_files(root_directory: str) -> Dict:
     # Regex patterns
     date_pattern = re.compile(r'(?:^|-)(\d{6})(?=-|\.)')          # YYMMDD  (2-digit year)
     date8_pattern = re.compile(r'(?:^|[-_])(\d{8})(?=[-_.]|$)')   # YYYYMMDD (4-digit year)
-    days_pattern = re.compile(r'\d{2}D')
-    
+    age_pattern = utils.AGE_TAG_RE                                # ##D/##W/##M/##Y
+
     _section("CHECKING FILES")
     print(f"{Fore.LIGHTBLACK_EX}Scanning {root_directory}{Style.RESET_ALL}\n")
     
@@ -888,17 +889,18 @@ def check_files(root_directory: str) -> Dict:
         parts = name_without_ext.split('-')
         metadata = parts
         
-        # Count dates and check for days notation. Both YYMMDD and YYYYMMDD
-        # count as one date each, so a 4-digit-year file shares the same naming
-        # scheme as its 2-digit peers instead of being flagged as a minority.
+        # Count dates and check for an age tag (days/weeks/months/years). Both
+        # YYMMDD and YYYYMMDD count as one date each, so a 4-digit-year file
+        # shares the same naming scheme as its 2-digit peers instead of being
+        # flagged as a minority.
         six_digit_dates = date_pattern.findall(filename)
         eight_digit_dates = [d for d in date8_pattern.findall(filename)
                              if _looks_like_yyyymmdd(d)]
         num_dates = len(six_digit_dates) + len(eight_digit_dates)
-        has_days = bool(days_pattern.search(filename))
+        has_age = bool(age_pattern.search(filename))
 
         # Create metadata signature
-        metadata_key = (len(metadata), num_dates, has_days)
+        metadata_key = (len(metadata), num_dates, has_age)
         metadata_counts[metadata_key] += 1
         scheme_files[metadata_key].append(file_path)
 
@@ -998,25 +1000,26 @@ def print_analysis_summary(analysis_results: Dict) -> None:
     _explain(
         "Bad Blood reads data (sample, date, ...) from each file name, split",
         "on \"-\". Files are grouped by structure: how many parts they have,",
-        "how many dates, and whether they carry a day tag such as 03D. The",
-        "structure most files share is treated as the expected one; files that",
-        "differ from it may fail to load.",
+        "how many dates, and whether they carry an age tag such as 03D (days),",
+        "6W (weeks), 12M (months) or 2Y (years). The structure most files share",
+        "is treated as the expected one; files that differ from it may fail to",
+        "load.",
     )
     print(f"\nScanned {Fore.GREEN}{total_files}{Style.RESET_ALL} .mzz files.\n")
 
     # One row per structure — date problems get their own section later.
     table_data = []
     for scheme, count in scheme_counts.most_common():
-        length, num_dates, has_days = scheme
+        length, num_dates, has_age = scheme
         percentage = (count / total_files) * 100
         is_majority = scheme == most_common_scheme
         status = "✓ expected" if is_majority else "differs"
         table_data.append([
             status, count, f"{percentage:.0f}%", length, num_dates,
-            "yes" if has_days else "no",
+            "yes" if has_age else "no",
         ])
 
-    headers = ["", "Files", "Share", "Name parts", "Dates", "Day tag"]
+    headers = ["", "Files", "Share", "Name parts", "Dates", "Age tag"]
     print(tabulate(table_data, headers=headers, tablefmt="fancy_grid"))
 
     if len(scheme_counts) == 1:
