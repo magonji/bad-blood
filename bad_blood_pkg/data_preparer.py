@@ -6,6 +6,7 @@ removal of spectra with abnormal backgrounds, atmospheric interference, and
 low intensity signals.
 """
 
+import os
 from typing import List, Optional, Tuple, Union
 import pandas as pd
 import numpy as np
@@ -14,7 +15,13 @@ import questionary
 from colorama import Fore, Style
 from tqdm import tqdm
 
-from bad_blood_pkg.console_ui import section
+from bad_blood_pkg.console_ui import section, explain
+from bad_blood_pkg.data_loader import SOURCE_FILE_COLUMN
+
+# Duplicate reporting: how many groups to preview on screen, and where the full
+# list is written when the user asks for it.
+_DUPLICATE_PREVIEW_GROUPS = 5
+_DUPLICATE_REPORT_NAME = "duplicate_spectra_report.txt"
 
 pd.set_option('display.max_columns', None)  # Mostrar todas las columnas
 pd.set_option('display.width', None)       # Sin límite de ancho
@@ -161,16 +168,20 @@ def filter_low_intensity_spectra(df: pd.DataFrame,
     return _handle_low_intensity_spectra(df_with_averages, low_intensity_mask, low_intensity_count)
 
 
-def filter_duplicate_spectra(df: pd.DataFrame) -> pd.DataFrame:
+def filter_duplicate_spectra(df: pd.DataFrame,
+                             source_directory: Optional[str] = None) -> pd.DataFrame:
     """
     Removes spectra with identical absorbance values across all wavenumbers.
 
     Identifies exact duplicates by comparing spectral data columns only
     (metadata columns are ignored). Keeps the first occurrence of each
-    unique spectrum.
+    unique spectrum, and offers to save the list of files that share a
+    spectrum to a text file.
 
     Args:
         df: DataFrame containing metadata and spectral data
+        source_directory: Folder the spectra were loaded from; the optional
+            report is written there (current directory if not given)
 
     Returns:
         DataFrame with duplicate spectra removed
@@ -184,20 +195,36 @@ def filter_duplicate_spectra(df: pd.DataFrame) -> pd.DataFrame:
         print(f"{Fore.RED}No spectral data columns found.{Style.RESET_ALL}")
         return df
 
-    # Find exact duplicates based on spectral data only
-    duplicate_mask = df.duplicated(subset=spectral_columns, keep='first')
-    removed_count = duplicate_mask.sum()
+    # Group the rows that share an identical spectrum
+    duplicate_groups = _find_duplicate_groups(df, spectral_columns)
 
+    # Every group keeps its first row, so the rest are the removed ones
+    removed_count = sum(len(group) - 1 for group in duplicate_groups)
     _print_removal_summary(removed_count, "duplicate spectra")
 
-    if removed_count > 0:
-        filtered_df = df[~duplicate_mask]
-        return filtered_df
+    if not duplicate_groups:
+        return df
 
-    return df
+    # Show a bounded preview and offer the full list as a file
+    _print_duplicate_groups(df, duplicate_groups)
+
+    save_list = questionary.confirm(
+        "Save the list of files that share a spectrum to a text file?",
+        default=False
+    ).ask()
+
+    if save_list:
+        _export_duplicate_groups(df, duplicate_groups, len(df), source_directory)
+
+    # Keep the first row of every group, drop the rest (positional mask, so a
+    # DataFrame with repeated index labels cannot lose the wrong rows)
+    keep_mask = np.ones(len(df), dtype=bool)
+    keep_mask[[pos for group in duplicate_groups for pos in group[1:]]] = False
+    return df[keep_mask]
 
 
-def handle_prepare_command(df: pd.DataFrame) -> pd.DataFrame:
+def handle_prepare_command(df: pd.DataFrame,
+                           source_directory: Optional[str] = None) -> pd.DataFrame:
     """
     Applies comprehensive quality filtering to spectral data.
 
@@ -209,6 +236,8 @@ def handle_prepare_command(df: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         df: Original DataFrame with spectral data
+        source_directory: Folder the spectra were loaded from (used as the
+            destination for the optional duplicate-files report)
 
     Returns:
         Quality-filtered DataFrame
@@ -218,7 +247,7 @@ def handle_prepare_command(df: pd.DataFrame) -> pd.DataFrame:
 
     # Stage 1: Remove duplicate spectra
     section("DUPLICATE SPECTRA")
-    filtered_df = filter_duplicate_spectra(df)
+    filtered_df = filter_duplicate_spectra(df, source_directory)
 
     # Stage 2: Filter abnormal backgrounds
     section("ABNORMAL BACKGROUND")
@@ -240,6 +269,118 @@ def handle_prepare_command(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # Helper functions for improved code organisation and efficiency
+def _find_duplicate_groups(df: pd.DataFrame,
+                           spectral_columns: pd.Index) -> List[List[int]]:
+    """
+    Groups the rows whose spectra are identical.
+
+    Rows are first narrowed down with `duplicated(keep=False)` and then grouped
+    by a 64-bit hash of their spectral values — hashing keeps the grouping cheap
+    on datasets with thousands of wavenumber columns.
+
+    Args:
+        df: DataFrame containing metadata and spectral data
+        spectral_columns: Columns holding the absorbance values
+
+    Returns:
+        List of groups; each group is a list of row positions (2 or more),
+        in the order the rows appear in the DataFrame
+    """
+    duplicated_any = df.duplicated(subset=spectral_columns, keep=False).to_numpy()
+
+    if not duplicated_any.any():
+        return []
+
+    positions = np.flatnonzero(duplicated_any)
+    subset = df.loc[:, spectral_columns].iloc[positions]
+    row_hashes = pd.util.hash_pandas_object(subset, index=False)
+
+    # Group the row positions by spectrum hash, preserving the original order
+    grouped = pd.Series(positions).groupby(row_hashes.to_numpy(), sort=False)
+    return [group.tolist() for _, group in grouped]
+
+
+def _duplicate_row_label(df: pd.DataFrame, position: int) -> str:
+    """
+    Returns the file a row came from, or a row reference if it is unknown.
+
+    Data loaded with an older version (or read back from an exported file
+    without the source column) has no file name to show.
+    """
+    if SOURCE_FILE_COLUMN in df.columns:
+        return str(df[SOURCE_FILE_COLUMN].iat[position])
+    return f"(row {position})"
+
+
+def _print_duplicate_groups(df: pd.DataFrame, duplicate_groups: List[List]) -> None:
+    """
+    Prints a bounded preview of the files that share a spectrum.
+
+    Args:
+        df: DataFrame containing the duplicated rows
+        duplicate_groups: Groups of index labels sharing a spectrum
+    """
+    duplicated_files = sum(len(group) for group in duplicate_groups)
+
+    print(f"\n{Fore.YELLOW}{duplicated_files} files share their spectrum with another "
+          f"file, in {len(duplicate_groups)} group(s).{Style.RESET_ALL}")
+    explain("Within each group only the first file is kept; the rest are removed.")
+
+    if SOURCE_FILE_COLUMN not in df.columns:
+        explain("The source file of each spectrum is unknown for this dataset,",
+                "so rows are listed by their position instead.")
+
+    for i, group in enumerate(duplicate_groups[:_DUPLICATE_PREVIEW_GROUPS], 1):
+        print(f"{Fore.CYAN}  Group {i} — {len(group)} files:{Style.RESET_ALL}")
+        for j, index_label in enumerate(group):
+            status = "kept" if j == 0 else "removed"
+            print(f"      {_duplicate_row_label(df, index_label)}  [{status}]")
+
+    if len(duplicate_groups) > _DUPLICATE_PREVIEW_GROUPS:
+        remaining = len(duplicate_groups) - _DUPLICATE_PREVIEW_GROUPS
+        print(f"      {Fore.LIGHTBLACK_EX}... and {remaining} more group(s) — "
+              f"save the list to a file to see them all.{Style.RESET_ALL}")
+    print()
+
+
+def _export_duplicate_groups(df: pd.DataFrame,
+                             duplicate_groups: List[List],
+                             total_spectra: int,
+                             source_directory: Optional[str] = None) -> None:
+    """
+    Writes the full list of files sharing a spectrum to a text file.
+
+    Args:
+        df: DataFrame containing the duplicated rows
+        duplicate_groups: Groups of index labels sharing a spectrum
+        total_spectra: Number of spectra analysed (for the report header)
+        source_directory: Destination folder (current directory if not given)
+    """
+    duplicated_files = sum(len(group) for group in duplicate_groups)
+
+    export_lines = ["Bad Blood — Files sharing an identical spectrum",
+                    f"{duplicated_files} of {total_spectra} spectra are duplicated, "
+                    f"in {len(duplicate_groups)} group(s)",
+                    "Within each group only the first file is kept; the rest are removed.",
+                    ""]
+
+    for i, group in enumerate(duplicate_groups, 1):
+        export_lines.append(f"  Group {i} — {len(group)} files:")
+        for j, index_label in enumerate(group):
+            status = "kept" if j == 0 else "removed"
+            export_lines.append(f"      {_duplicate_row_label(df, index_label)}  [{status}]")
+        export_lines.append("")
+
+    export_path = os.path.join(source_directory or os.getcwd(), _DUPLICATE_REPORT_NAME)
+
+    try:
+        with open(export_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(export_lines))
+        print(f"{Fore.GREEN}✓ Saved to: {export_path}{Style.RESET_ALL}\n")
+    except Exception as e:
+        print(f"{Fore.RED}✗ Could not save the file: {str(e)}{Style.RESET_ALL}\n")
+
+
 def _find_closest_wavenumber_column(df: pd.DataFrame, target_wavenumber: Union[float, List[float]]) -> Union[Optional[str], Optional[List[str]]]:
     """
     Finds the column name(s) closest to the target wavenumber(s).

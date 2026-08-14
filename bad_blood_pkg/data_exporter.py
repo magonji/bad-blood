@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 plt.style.use('dark_background')
 colour_palette = plt.style.library['dark_background']['axes.prop_cycle'].by_key()['color'] # We extract the colour palette of the current style
 
+from bad_blood_pkg import data_loader
 from bad_blood_pkg import data_preparer
 from bad_blood_pkg import utils
 from bad_blood_pkg.console_ui import section
@@ -267,9 +268,12 @@ def apply_metadata_filters(df: pd.DataFrame) -> pd.DataFrame:
     """
     import re
     
-    # Identify metadata columns (non-numeric column names)
+    # Identify metadata columns (non-numeric column names). The source file is
+    # a near-unique path per row: useful to keep in the export, useless to filter by.
     numeric_columns = df.columns[pd.to_numeric(df.columns, errors='coerce').notna()]
-    all_metadata_columns = [col for col in df.columns if col not in numeric_columns]
+    all_metadata_columns = [col for col in df.columns
+                            if col not in numeric_columns
+                            and col != data_loader.SOURCE_FILE_COLUMN]
     
     if not all_metadata_columns:
         print(f"{Fore.YELLOW}No metadata columns found. Skipping filtering step.{Style.RESET_ALL}")

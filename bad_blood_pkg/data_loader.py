@@ -193,10 +193,15 @@ def load_and_process_spectra(root_directory: str,
         spectral_matrix = np.delete(spectral_matrix, failed_indices, axis=0)
         for idx in sorted(failed_indices, reverse=True):
             metadata_list.pop(idx)
+            valid_files.pop(idx)
         print(f"{Fore.YELLOW}Removed {len(failed_indices)} spectra that failed during loading.{Style.RESET_ALL}")
 
+    # Keep the file each row came from (path relative to the scanned folder) so
+    # later steps can name the offending files (e.g. the duplicate report).
+    source_files = [os.path.relpath(p, root_directory) for p in valid_files]
+
     # Convert to DataFrame with user-defined column names
-    df = _create_dataframe(metadata_list, spectral_matrix, common_wavenumbers)
+    df = _create_dataframe(metadata_list, spectral_matrix, common_wavenumbers, source_files)
 
     return df
 
@@ -462,6 +467,9 @@ _AGE_RE = re.compile(r'^\d{1,3}D$')         # #D, ##D, ###D
 # A "sample identifier" is a near-unique code, not a grouping category. Spotting
 # it avoids listing (and treating as categories) hundreds of one-off codes.
 _ID_MIN_UNIQUE = 10        # need at least this many distinct values to be an ID
+# Reserved column holding the file each spectrum was read from. Downstream steps
+# (duplicate report, export) look it up by this exact name.
+SOURCE_FILE_COLUMN = 'source_file'
 _ID_UNIQUE_RATIO = 0.5     # ...and this fraction of rows distinct (few repeats)
 _MAX_CATEGORIES = 30       # more distinct values than this is never a real category
 _CATEGORY_DISPLAY_CAP = 15  # how many category values to list before summarising
@@ -614,6 +622,10 @@ def _validate_column_names(input_str: str, expected_count: int) -> Union[bool, s
     if len(set(column_names)) != len(column_names):
         return "Column names must be unique. Please try again."
 
+    # '<SOURCE_FILE_COLUMN>' is added automatically with the file each row came from
+    if SOURCE_FILE_COLUMN in column_names:
+        return f"'{SOURCE_FILE_COLUMN}' is reserved by Bad Blood. Please use another name."
+
     return True
 
 def _get_column_names_from_user(num_metadata_cols: int, metadata_list: List[List[str]]) -> List[str]:
@@ -675,6 +687,12 @@ def _get_column_names_from_user(num_metadata_cols: int, metadata_list: List[List
             print(f"{Fore.RED}Column names must be unique. Please try again.{Style.RESET_ALL}")
             continue
 
+        # Reserved: Bad Blood adds this column itself (source file of each row)
+        if SOURCE_FILE_COLUMN in column_names:
+            print(f"{Fore.RED}'{SOURCE_FILE_COLUMN}' is reserved by Bad Blood. "
+                  f"Please use another name.{Style.RESET_ALL}")
+            continue
+
         print(f"\n{Fore.GREEN}Column names accepted:{Style.RESET_ALL}")
         for i, name in enumerate(column_names):
             print(f"  metadata_{i} → {name}")
@@ -690,7 +708,8 @@ def _get_column_names_from_user(num_metadata_cols: int, metadata_list: List[List
 
 def _create_dataframe(metadata_list: List[List[str]],
                      spectral_matrix: np.ndarray,
-                     common_wavenumbers: np.ndarray) -> pd.DataFrame:
+                     common_wavenumbers: np.ndarray,
+                     source_files: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Creates a pandas DataFrame from separate metadata and spectral data,
     avoiding the expensive conversion to object dtype.
@@ -702,6 +721,8 @@ def _create_dataframe(metadata_list: List[List[str]],
         metadata_list: List of metadata row lists (strings)
         spectral_matrix: Float32 numpy array with interpolated spectra
         common_wavenumbers: Array of wavenumber values
+        source_files: Optional list of source file paths (one per row), added as
+            the leading SOURCE_FILE_COLUMN column
 
     Returns:
         pandas DataFrame with named columns
@@ -720,6 +741,11 @@ def _create_dataframe(metadata_list: List[List[str]],
     metadata_df = pd.DataFrame(metadata_list, columns=metadata_column_names)
     for col in metadata_df.columns:
         metadata_df[col] = metadata_df[col].astype('category')
+
+    # Prepend the source file path (kept as plain strings: paths are unique, so
+    # the category dtype would only add overhead).
+    if source_files is not None:
+        metadata_df.insert(0, SOURCE_FILE_COLUMN, source_files)
 
     # Build spectral DataFrame directly from float32 matrix (no object conversion)
     wavenumber_columns = [f"{wn:.2f}" for wn in common_wavenumbers]

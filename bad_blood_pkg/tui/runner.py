@@ -103,7 +103,7 @@ def run_pipeline(tui):
     tui.n_prepared = None
 
     # 4. Quality-control filters.
-    prepared = data_preparer.handle_prepare_command(df)
+    prepared = data_preparer.handle_prepare_command(df, tui.directory)
     if prepared is None:
         return "Prepare produced no data."
     tui.prepared_df = prepared
@@ -138,7 +138,7 @@ def run_load(tui):
 
 def run_prepare(tui):
     from bad_blood_pkg import data_preparer
-    prepared = data_preparer.handle_prepare_command(tui.df)
+    prepared = data_preparer.handle_prepare_command(tui.df, tui.directory)
     if prepared is not None:
         tui.prepared_df = prepared
         tui.n_prepared = len(prepared)

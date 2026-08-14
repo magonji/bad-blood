@@ -62,7 +62,9 @@ Work through the pipeline top to bottom:
 
 1. **Check files** *(optional, recommended first)* — audit naming schemes and date-format errors.
 2. **Load spectra** — scan `.mzz` files and build the unified matrix.
-3. **Prepare (QC)** — apply the quality-control filters.
+3. **Prepare (QC)** — apply the quality-control filters. When identical spectra
+   are found, the files sharing each spectrum can be saved to
+   `duplicate_spectra_report.txt` in the scanned folder.
 4. **Export** — pick wavenumbers, optionally filter metadata, and write the Parquet file.
 
 Each step opens its own prompts as native full-screen widgets; progress and log
@@ -77,7 +79,10 @@ output appear in-place without leaving the interface.
   - Embedded metadata in filenames
 
 ### Output
-- **Parquet file**
+- **`duplicate_spectra_report.txt`** *(optional)*: the files that share an
+  identical spectrum, grouped, marking the one kept and the ones removed
+- **Parquet file**: metadata columns + absorbances, with a leading `source_file`
+  column holding the path (relative to the scanned folder) each spectrum came from
 
 ## Metadata Naming Schemes
 
