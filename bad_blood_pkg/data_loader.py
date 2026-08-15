@@ -176,7 +176,10 @@ def load_and_process_spectra(root_directory: str,
     _print_spectral_consistency_report(spectral_properties)
 
     # Calculate common wavenumber grid from properties
-    common_wavenumbers, num_points = _calculate_common_grid(spectral_props)
+    grid = _calculate_common_grid(spectral_props)
+    if grid is None:
+        return None
+    common_wavenumbers, num_points = grid
 
     # =================================================================
     # PASS 2: Read spectra and interpolate directly into matrix
@@ -303,8 +306,14 @@ def _scan_single_file(file_path: str) -> Optional[Tuple[List[str], Dict]]:
             with zf.open(tmp_filename) as spectrum_file:
                 data = spectrum_file.read().decode('utf-8').splitlines()
 
-                max_wn = float(data[0].strip())
-                min_wn = float(data[1].strip())
+                # The two header bounds may be stored in either order: most
+                # instruments write the highest wavenumber first (descending
+                # spectra), but some export ascending files (lowest first).
+                # Sort them so the range is always read correctly.
+                bound_a = float(data[0].strip())
+                bound_b = float(data[1].strip())
+                max_wn = max(bound_a, bound_b)
+                min_wn = min(bound_a, bound_b)
                 num_points = int(float(data[2].strip()))
 
                 # Validate data consistency (count lines, don't parse floats)
@@ -340,7 +349,7 @@ def _scan_single_file(file_path: str) -> Optional[Tuple[List[str], Dict]]:
 # Common wavenumber grid calculation
 # =========================================================================
 
-def _calculate_common_grid(spectral_props: List[Dict]) -> Tuple[np.ndarray, int]:
+def _calculate_common_grid(spectral_props: List[Dict]) -> Optional[Tuple[np.ndarray, int]]:
     """
     Calculates the common wavenumber grid from spectral properties
     gathered during pass 1.
@@ -349,11 +358,20 @@ def _calculate_common_grid(spectral_props: List[Dict]) -> Tuple[np.ndarray, int]
         spectral_props: List of property dictionaries from pass 1
 
     Returns:
-        Tuple of (common_wavenumbers_array, num_points)
+        Tuple of (common_wavenumbers_array, num_points), or None if the spectra
+        share no common wavenumber range.
     """
     # Find the overlapping range (tightest bounds)
     min_wavenumber = max(props['min_wn'] for props in spectral_props)
     max_wavenumber = min(props['max_wn'] for props in spectral_props)
+
+    # Spectra covering disjoint ranges have no common grid to interpolate onto.
+    if max_wavenumber <= min_wavenumber:
+        print(f"\n{Fore.RED}The spectra share no common wavenumber range.{Style.RESET_ALL}")
+        print(f"The narrowest range would be [{max_wavenumber:.1f}, {min_wavenumber:.1f}] cm⁻¹, "
+              f"which is empty.")
+        print("Check the ranges listed above: some files cover a region the others do not.")
+        return None
 
     # Use highest resolution (smallest step)
     resolutions = [props['resolution'] for props in spectral_props if props['resolution'] > 0]
@@ -443,15 +461,19 @@ def _read_spectrum(file_path: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
             with zf.open(tmp_filename) as spectrum_file:
                 data = spectrum_file.read().decode('utf-8').splitlines()
 
-                max_wn = float(data[0].strip())
-                min_wn = float(data[1].strip())
+                # Keep the header bounds in the order they are stored: the
+                # absorbances follow that same direction (descending for most
+                # instruments, ascending for the files that list the lowest
+                # wavenumber first), so the axis must not be re-sorted here.
+                first_wn = float(data[0].strip())
+                last_wn = float(data[1].strip())
                 num_points = int(float(data[2].strip()))
                 absorbances = np.array([float(x.strip()) for x in data[3:]], dtype=np.float32)
 
                 if len(absorbances) != num_points:
                     return None
 
-                wavenumbers = np.linspace(max_wn, min_wn, num_points)
+                wavenumbers = np.linspace(first_wn, last_wn, num_points)
                 return wavenumbers, absorbances
 
     except (zipfile.BadZipFile, ValueError, IndexError):

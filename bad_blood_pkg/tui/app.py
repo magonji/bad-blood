@@ -63,6 +63,9 @@ class BadBloodTUI:
         self.n_loaded = None
         self.n_prepared = None
         self.active_step = None
+        # None while a step runs; (ok, summary) once it ends. The running screen
+        # stays up until ⏎ so the log can be read instead of vanishing.
+        self.finished = None
 
         # prompt interaction state
         self.choice_index = 0
@@ -321,6 +324,15 @@ class BadBloodTUI:
         p = self.bridge.prompt
         start, end, total, avail = self._console_view()
         scrollable = total > avail
+        if self.finished is not None:
+            ok, msg = self.finished
+            out = [("class:status.msg" if ok else "class:q.err", "  " + msg),
+                   ("class:status", "    "),
+                   ("class:status.key", "⏎"), ("class:status", " menu")]
+            if scrollable:
+                out += [("class:status", "    "), ("class:status.key", "^U/^D"),
+                        ("class:status", " scroll")]
+            return out
         if p is None:
             out = [("class:progress", "  working…")]
             if scrollable:
@@ -434,6 +446,7 @@ class BadBloodTUI:
         self.active_step = key
         self.status_msg = ""
         self.scroll_offset = 0
+        self.finished = None
         self.bridge.reset_console()
         self.state = "running"
         t = threading.Thread(target=self._run_worker, args=(key,), daemon=True)
@@ -446,16 +459,22 @@ class BadBloodTUI:
         sys.stdout = stream
         sys.stderr = stream
         self.bridge.running = True
+        ok = True
         try:
             summary = runner.STEP_RUNNERS[key](self)
         except Exception as e:  # noqa: BLE001 — surface engine errors, don't crash UI
+            import traceback
+            traceback.print_exc()        # still captured: lands in the console panel
             summary = f"Error in {key}: {e}"
+            ok = False
         finally:
             sys.stdout = old_out
             sys.stderr = old_err
             self.bridge.running = False
         self.status_msg = summary
-        self.state = "hub"
+        # Hold the running screen (log included) until the user presses ⏎, so a
+        # fast step — or a crash — cannot wipe itself off the screen unread.
+        self.finished = (ok, summary)
         try:
             self.app.invalidate()
         except Exception:
@@ -519,6 +538,7 @@ class BadBloodTUI:
                            and self.bridge.prompt["type"] in ("text", "path"))
         prompting = Condition(lambda: self.state == "running" and self.bridge.has_prompt())
         running = Condition(lambda: self.state == "running")
+        finished = Condition(lambda: self.state == "running" and self.finished is not None)
 
         @kb.add("c-c")
         def _(event):
@@ -543,6 +563,15 @@ class BadBloodTUI:
         @kb.add("q", filter=welcome | hub | helpmode)
         def _(event):
             event.app.exit()
+
+        # -- finished step: the log stays on screen until dismissed --
+        @kb.add("enter", filter=finished)
+        @kb.add("escape", filter=finished)
+        @kb.add("space", filter=finished)
+        def _(event):
+            self.finished = None
+            self.scroll_offset = 0
+            self.state = "hub"
 
         @kb.add("enter", filter=welcome)
         def _(event):

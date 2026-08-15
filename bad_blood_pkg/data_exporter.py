@@ -382,22 +382,139 @@ def apply_metadata_filters(df: pd.DataFrame) -> pd.DataFrame:
     return filtered_df
 
 
+def _default_output_path(source_directory: Optional[str]) -> Path:
+    """
+    Builds the suggested destination for the export.
+
+    The file is named after the scanned folder and written beside it, so
+    exporting two folders in a row cannot silently overwrite the first result.
+
+    Args:
+        source_directory: Directory where the original data was loaded from
+
+    Returns:
+        Path of the suggested .parquet file
+    """
+    if not source_directory:
+        return Path.cwd() / "data.parquet"
+
+    p = Path(source_directory).expanduser().resolve()
+    return p.parent / f"{p.name}.parquet"
+
+
+def _resolve_output_path(raw: str, default_path: Path) -> Path:
+    """
+    Turns whatever the user typed into a concrete .parquet path.
+
+    Accepts an absolute path, a path relative to the default folder, a bare
+    file name, or a directory (the default file name is used inside it).
+    Surrounding quotes — as pasted by macOS' "Copy as Pathname" — are stripped
+    and a missing .parquet extension is added.
+
+    Args:
+        raw: Text entered by the user
+        default_path: Destination used when the input is empty
+
+    Returns:
+        Resolved output Path
+    """
+    raw = (raw or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+        raw = raw[1:-1].strip()
+
+    if not raw:
+        return default_path
+
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = default_path.parent / p
+    if p.is_dir():
+        p = p / default_path.name
+    if p.suffix.lower() != '.parquet':
+        p = p.parent / (p.name + '.parquet')
+
+    return p
+
+
+def _validate_output_path(raw: str, default_path: Path):
+    """
+    questionary-style validator for the destination field.
+
+    Args:
+        raw: Text entered by the user
+        default_path: Destination used when the input is empty
+
+    Returns:
+        True if usable, otherwise the error message to display
+    """
+    try:
+        output_file = _resolve_output_path(raw, default_path)
+    except (OSError, ValueError):
+        return "That is not a valid path."
+
+    if not output_file.parent.is_dir():
+        return f"Folder not found: {output_file.parent}"
+
+    return True
+
+
+def _ask_output_path(default_path: Path) -> Optional[Path]:
+    """
+    Asks where to write the export, offering the default name.
+
+    Args:
+        default_path: Suggested destination, pre-filled in the field
+
+    Returns:
+        Chosen Path, or None if the user cancelled
+    """
+    print(f"\n{Fore.YELLOW}Destination:{Style.RESET_ALL}")
+    print(f"  Suggested file: {Fore.CYAN}{default_path.name}{Style.RESET_ALL}")
+    print(f"  Folder: {default_path.parent}")
+    print("  Leave empty and press ⏎ to accept it, or type another file name")
+    print("  (saved in the same folder), a folder, or a full path.")
+
+    while True:
+        # The field is left empty on purpose: accepting the suggestion is one
+        # keystroke, and a new name needs no deleting of a pre-filled path.
+        raw = questionary.text(
+            "Save the exported file as:",
+            validate=lambda x: _validate_output_path(x, default_path),
+        ).ask()
+
+        if raw is None:
+            return None
+
+        output_file = _resolve_output_path(raw, default_path)
+
+        if output_file.exists():
+            overwrite = questionary.confirm(
+                f"'{output_file.name}' already exists. Overwrite it?",
+                default=False,
+            ).ask()
+            if not overwrite:
+                continue
+
+        return output_file
+
+
 def export_data(df: pd.DataFrame, source_directory: Optional[str] = None) -> None:
     """
     Exports the DataFrame to various file formats.
-    
+
     Args:
         df: DataFrame to export
         source_directory: Directory where the original data was loaded from
     """
 
-    
-    p = Path(source_directory)
-    parent_dir = p.parent
-    output_file = parent_dir / "data.parquet"
-    
-    print(f"\n{Fore.CYAN}Exporting data to: {parent_dir}{Style.RESET_ALL}\n")
-    
+    output_file = _ask_output_path(_default_output_path(source_directory))
+
+    if output_file is None:
+        print(f"\n{Fore.YELLOW}Export cancelled. Nothing was written.{Style.RESET_ALL}")
+        return
+
+    print(f"\n{Fore.CYAN}Exporting data to: {output_file}{Style.RESET_ALL}\n")
+
     # Start progress spinner
     stop_spinner = threading.Event()
     spinner_thread = threading.Thread(target=utils.spinner, args=(stop_spinner,))
